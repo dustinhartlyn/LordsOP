@@ -104,9 +104,11 @@ impl Screen for AboutScreen {
             caps: None,
         };
         pen.window(canvas, BOX_X, BOX_Y, BOX_COLS, BOX_ROWS, BOX_SET);
-        let title = a.text(GROUP, TITLE).to_string();
-        let copyright = a.text(GROUP, COPYRIGHT).to_string();
-        let version = a.text(GROUP, VERSION).to_string();
+        let (title, copyright, version) = if ctx.assets.is_original() {
+            ("Open Lords II", "Original artwork and worlds.", env!("CARGO_PKG_VERSION"))
+        } else {
+            (a.text(GROUP, TITLE), a.text(GROUP, COPYRIGHT), a.text(GROUP, VERSION))
+        };
         pen.heading(canvas, TEXT_X, TITLE_Y, &title, font::TEXT);
         pen.body(canvas, TEXT_X, COPYRIGHT_Y, &copyright, font::TEXT);
         pen.body(canvas, TEXT_X, VERSION_Y, &version, font::TEXT);

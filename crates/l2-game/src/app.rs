@@ -48,12 +48,12 @@ pub(super) fn translate(key: &WinitKey, ctrl: bool) -> Option<Key> {
 }
 
 pub(crate) fn usage() -> ! {
-    eprintln!("usage: l2-game <game dir> [--mods <dir>] [--no-sound] [--verify-replay <file>]");
+    eprintln!("usage: l2-game [<classic game dir>] [--mods <dir>] [--no-sound] [--verify-replay <file>]");
     eprintln!("               [--host [port] | --join <addr|code>] [--relay <host:port>] [--players <n>]");
     eprintln!("               [--name <text>] [--shield <1-5>]");
     eprintln!();
-    eprintln!("  <game dir>   a Lords of the Realm II install: Lords2.exe, L2_maps.dat,");
-    eprintln!("               the fonts, the artwork and the tile sets. Never written to.");
+    eprintln!("  No directory is needed: the game includes original artwork and worlds.");
+    eprintln!("  <classic game dir> or LORDS2_DIR selects a read-only Lords of the Realm II install.");
     eprintln!("  --no-sound   do not open an audio device. The game already runs");
     eprintln!("               silent on a machine that has none; this is for a");
     eprintln!("               machine that has one and would rather it stayed quiet.");
@@ -124,10 +124,11 @@ impl super::App {
 }
 
 pub(crate) fn platform(
-    dir: &std::path::Path,
+    dir: Option<&std::path::Path>,
     mods: Option<&std::path::Path>,
 ) -> Result<Platform, Box<dyn std::error::Error>> {
-    let mut builder = Platform::builder().base(dir);
+    let mut builder = Platform::builder();
+    if let Some(dir) = dir { builder = builder.base(dir); }
     if let Some(m) = mods {
         let found = l2_mods::discover(m)?;
         let ids: Vec<String> = found.iter().map(|f| f.id.clone()).collect();
@@ -136,12 +137,16 @@ pub(crate) fn platform(
     Ok(builder.build()?)
 }
 
+pub(crate) fn load_assets(platform: &Platform, classic: bool) -> Result<Assets, String> {
+    if classic { Assets::load(&platform.vfs) } else { Assets::load_original(&platform.vfs) }
+}
+
 /// `docs/netcode.md` §6 *The replay harness*, in a fresh process.
-pub(crate) fn verify_replay(dir: PathBuf, mods: Option<PathBuf>, path: PathBuf) -> ! {
+pub(crate) fn verify_replay(dir: Option<PathBuf>, mods: Option<PathBuf>, path: PathBuf) -> ! {
     let run = move || -> Result<String, String> {
-        let platform = platform(&dir, mods.as_deref()).map_err(|e| e.to_string())?;
+        let platform = platform(dir.as_deref(), mods.as_deref()).map_err(|e| e.to_string())?;
         let tables = platform.kingdom_tables().map_err(|e| e.to_string())?;
-        let assets = Assets::load(&platform.vfs).map_err(|e| e.to_string())?;
+        let assets = load_assets(&platform, dir.is_some())?;
         l2_game::net::replay::verify_file(&assets, &path, tables)
     };
     // A debug build's `Game` moves overflow the main thread's 1 MB stack.

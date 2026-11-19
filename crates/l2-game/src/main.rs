@@ -60,11 +60,7 @@ struct App {
     /// see [`l2_game::input::LeftButton`].
     left: l2_game::input::LeftButton,
     pointer: l2_game::cursor::Pointer,
-    /// **The original's own pointer pictures**, read out of the player's
-    /// `Lords2.exe` the way `App_InitWindow` (`0x004B2258`) reads them —
-    /// `RT_GROUP_CURSOR` 102, 103, 104, 105, 110, 111, 113. Empty when the
-    /// executable is absent or unreadable, and then the system cursors below
-    /// stand in.
+    /// Original cursor artwork, or cursor resources in explicit classic mode.
     pictures: Vec<l2_formats::cursors::Picture>,
     cursors: Vec<(u16, CustomCursor)>,
     cursor_scale: u32,
@@ -84,20 +80,22 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let launch::Args { dir, mods, sound, verify, net } = launch::args();
-    let prefs = l2_game::prefs::load();
-    let dir = launch::install_dir(dir, &prefs);
+    let dir = launch::install_dir(dir);
     if let Some(path) = verify {
         // [D] headless: a replay panic goes to stderr, not the crash box, C240.
         drop(std::panic::take_hook());
         app::verify_replay(dir, mods, path);
     }
-    let platform = app::platform(&dir, mods.as_deref())?;
+    let classic = dir.is_some();
+    let _save_scope = if classic { None } else { l2_game::saves::standalone_scope() };
+    let prefs = l2_game::prefs::load();
+    let platform = app::platform(dir.as_deref(), mods.as_deref())?;
     for m in &platform.load_order {
         println!("mod: {} {}", m.id, m.version);
     }
     let tables = platform.kingdom_tables()?;
 
-    let assets = Assets::load(&platform.vfs)?;
+    let assets = app::load_assets(&platform, classic)?;
     // The front end is up from the first frame and `Setup`'s own *Start* builds
     // the real game
     // until then. `docs/decisions.md` C117.
@@ -126,7 +124,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         game.kingdom.year
     );
 
-    let audio = if sound { Audio::open(&platform.vfs) } else { Audio::silent() };
+    let audio = if sound && (classic || !platform.load_order.is_empty()) {
+        Audio::open(&platform.vfs)
+    } else {
+        Audio::silent()
+    };
     println!(
         "sound: {} ({} wav files found)",
         if audio.is_live() { "on" } else { "off" },
@@ -142,13 +144,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             launch::open_lobby(&mut game, flags);
             machine.push(ScreenId::Lobby);
         }
-        None => l2_game::movie::start_up(&mut machine),
+        None if classic => l2_game::movie::start_up(&mut machine),
+        None => {}
     }
 
     let mut canvas = Canvas::screen();
     if game.prefs.sharp_text {
         canvas.enable_sharp();
     }
+    let pictures = assets.cursor_pictures(&platform.vfs);
     let mut app = App {
         game,
         assets,
@@ -167,16 +171,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         last_press: None,
         left: l2_game::input::LeftButton::new(),
         pointer: l2_game::cursor::Pointer::Arrow,
-        // `App_InitWindow` (`0x004B2258`) loads the seven cursors from the
-        // executable's own resources. Ours are read through the same overlay
-        // every other asset comes through, and a missing or unreadable
-        // `Lords2.exe` simply leaves the system cursors in place.
-        pictures: platform
-            .vfs
-            .read(scenario::EXECUTABLE)
-            .ok()
-            .and_then(|b| l2_formats::cursors::read(&b).ok())
-            .unwrap_or_default(),
+        pictures,
         cursors: Vec::new(),
         cursor_scale: 0,
         net: None,

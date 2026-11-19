@@ -25,6 +25,7 @@ pub mod install;
 pub mod message;
 pub mod movie;
 pub mod net;
+mod original;
 pub mod prefs;
 pub mod press;
 pub mod save;

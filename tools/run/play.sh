@@ -1,6 +1,6 @@
 #!/bin/sh
 # The Linux side of play.ps1: build, then run. A failed build launches nothing.
-# Usage: tools/run/play.sh [--release] [--no-build] <game dir> [l2-game flags]
+# Usage: tools/run/play.sh [--release] [--no-build] [<classic game dir>] [l2-game flags]
 # Target dir: $CARGO_TARGET_DIR, else ~/.cache/lords2-target, a symlink to F: so nothing
 # builds in /home and the Windows target/ is left alone (docs/environment.md, "On Linux").
 set -e

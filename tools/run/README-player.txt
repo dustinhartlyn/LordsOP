@@ -1,37 +1,35 @@
 open-lords2
 ===========
 
-An open reimplementation of the engine of Lords of the Realm II (Sierra /
-Impressions, 1996). This download is the engine only: it contains none of the
-original game's art, sound, music, films or data.
+Open Lords II is a standalone medieval strategy game inspired by Lords of
+the Realm II (Sierra / Impressions, 1996). The included worlds, art and fonts
+are original to this project. No publisher assets are distributed.
 
-You need your own copy
-----------------------
+Start playing
+-------------
 
-Install Lords of the Realm II first (GOG's edition works). open-lords2 reads
-that folder and never writes to it. It looks, in order, at:
+Unpack the archive and launch l2-game.exe on Windows or ./l2-game on Linux.
+No installation directory or extra asset download is needed.
+Windows uses Direct3D 12 by default. No graphics environment variable is needed.
 
-  1. a folder given on the command line: l2-game.exe "D:\Games\Lords of the Realm II"
-  2. the LORDS2_DIR environment variable
-  3. the folder it found last time
-  4. its own folder, and the folder above it
-  5. the GOG install recorded in the registry
-  6. C:\GOG Games\Lords of the Realm II, GOG Galaxy's and Steam's game folders,
-     C:\SIERRA\LORDS2
-  7. otherwise it asks you to choose the folder
-
-A folder counts if it holds L2_maps.dat and Lords2.exe (or L2.eng).
+For optional classic mode, supply your own read-only Lords of the Realm II
+folder as a command-line argument or set LORDS2_DIR. The folder must contain
+L2_maps.dat and Lords2.exe (or L2.eng). Leave both unset for standalone mode.
+Standalone is silent without a sound mod; illustrated events replace the
+classic films.
 
 Where your files go
 -------------------
 
 Saves, settings (prefs.ini) and crash reports (crash-<date>-<time>.log) are in
 
-  %APPDATA%\open-lords2\saves            on Windows
-  ~/.local/share/open-lords2/saves       on Linux
+  %APPDATA%\open-lords2\standalone\saves             on Windows
+  ~/.local/share/open-lords2/standalone/saves        on Linux
 
-Set LORDS2_SAVES to put them elsewhere. If the game stops unexpectedly, the
-crash report there is what to attach to a bug report.
+Classic mode uses the same paths without the standalone subdirectory. The
+two modes' saves are not interchangeable. Set LORDS2_SAVES to use a different
+directory. If the game stops unexpectedly, attach the crash report from there
+to a bug report.
 
 Keys
 ----
@@ -40,7 +38,7 @@ Keys
   F5          in a window: snap it to a whole multiple of 640 x 480
   Ctrl+D      show or hide our debug overlay
 
-Everything else is the original's controls; its manual applies.
+The in-game Help menu opens the standalone field guide.
 
 Multiplayer
 -----------
@@ -58,12 +56,12 @@ join page takes the host's address (TCP port 4712 by default; the game asks
 the host's router to open it, or forward it by hand). --relay host:port or
 LORDS2_RELAY picks another service.
 
-Both players need the same build of this engine and their own copy of the game.
+Use the same build, asset mode and mods on every player's machine.
 
 Command line
 ------------
 
-  l2-game [<game folder>] [--mods <dir>] [--no-sound]
+  l2-game [<classic game folder>] [--mods <dir>] [--no-sound]
           [--host [port] | --join <addr|code>] [--relay <host:port>]
           [--players <n>] [--name <text>] [--shield <1-5>]
 
@@ -71,10 +69,6 @@ Command line
   by address or by code. With --players, a host presses Start when that many
   seats are ready and a joiner presses Ready at once, so a shortcut can carry
   a friend straight in.
-
-On Linux the binary is l2-game; give it the game folder the same way:
-
-  ./l2-game "/path/to/Lords of the Realm II"
 
 Licence
 -------

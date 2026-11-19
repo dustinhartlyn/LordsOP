@@ -20,6 +20,8 @@ pub use drawing::*;
 
 pub mod eng;
 pub mod font;
+mod skirmish;
+mod words;
 
 use std::collections::BTreeMap;
 
@@ -160,16 +162,17 @@ pub const TROOPS_FILES: &[&str] = &["TROOPS.ENG", "TROOPS2.ENG", "TROOPS3.ENG"];
 pub const SKIRMISH_FILE_MAX: usize = 100;
 
 pub struct ShellAssets {
+    original: bool,
     pub eng: Option<Eng>,
     /// `BATTLES.ENG`, as `FUN_0042AA90` (`0x0042AA90`) leaves it in
-    /// `DAT_0051FD50`. Empty when the file is absent, which is what that
-    /// function's `len == 0` arm produces.
+    /// `DAT_0051FD50`, or the built-in skirmish roster.
     pub battles: l2_formats::Battles,
     /// `g_troopsTable` for each of the three files `Troops_Load`
     /// (`0x0042AC0C`) can open — the pick is
     /// [`l2_formats::troops::file_for`], so all three are parsed once here
     /// and the swap arm chooses between them.
     troops: BTreeMap<String, l2_formats::Troops>,
+    original_troops: Option<l2_formats::Troops>,
     /// `DAT_004E8790`, what `Files_Enumerate` (`0x004AECF0`) finds for the
     /// `.skr` picker: lower-cased by `FUN_00401246`, extension kept, and
     /// **at most a hundred** — the loop breaks at 99 and reports nothing.

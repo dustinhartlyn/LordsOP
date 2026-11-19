@@ -46,6 +46,7 @@ impl SetupScreen {
             // Music_Stop(0); g_mouseLeftReleased = 0; FUN_004B1897(); FUN_004B11CE();
             // Smk_Play("lom.smk", 0x46, 0x50, 0, g_screenId);  g_redrawRequest = 2;
             // ```
+            (SetupPage::Title, 2) if ctx.assets.is_original() => Transition::Push(ScreenId::About),
             (SetupPage::Title, 2) => {
                 Transition::Push(ScreenId::Movie(crate::movie::Film::LordsOfMagic))
             }

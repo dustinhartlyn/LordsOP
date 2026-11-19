@@ -69,7 +69,6 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
-            The engine only: it contains none of the original game's art, sound or data.
-            You need your own copy of Lords of the Realm II (GOG's edition works).
-            Unpack, then run l2-game (l2-game.exe on Windows) and point it at the game folder.
+            Open Lords II includes original artwork, maps and battlefield layouts.
+            Unpack, then run l2-game (l2-game.exe on Windows). No stock game installation is required.
             See README.txt inside the archive.

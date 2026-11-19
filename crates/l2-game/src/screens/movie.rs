@@ -45,6 +45,12 @@ const BOX_SET: usize = 1;
 
 enum State {
     Unopened,
+    Illustrated {
+        image: l2_formats::DecodedFrame,
+        x: i32,
+        y: i32,
+        ticks: u8,
+    },
     Failed,
     Playing(Box<Player>),
 }
@@ -91,7 +97,7 @@ impl MovieScreen {
 
     fn skip(&mut self, ctx: &mut Ctx) -> Transition {
         match self.state {
-            State::Playing(_) => self.finish(ctx),
+            State::Playing(_) | State::Illustrated { .. } => self.finish(ctx),
             _ => Transition::Stay,
         }
     }
@@ -112,9 +118,12 @@ impl MovieScreen {
             .and_then(|smk| Player::open(smk, cued).ok())
         {
             Some(p) => State::Playing(Box::new(p)),
+            None if ctx.assets.is_original() => match crate::original::tableau(self.film) {
+                Some((image, x, y)) => State::Illustrated { image, x, y, ticks: 150 },
+                None => State::Failed,
+            },
             None => State::Failed,
         };
-        self.redraw = true;
     }
 }
 
@@ -162,6 +171,10 @@ impl Screen for MovieScreen {
                 self.open(ctx);
                 Transition::Stay
             }
+            State::Illustrated { ticks, .. } => {
+                *ticks -= 1;
+                if *ticks == 0 { self.finish(ctx) } else { Transition::Stay }
+            }
             State::Failed => self.film.on_failure(),
             State::Playing(player) => {
                 let before = player.frame();
@@ -196,6 +209,10 @@ impl Screen for MovieScreen {
             Film::Capture { record, .. } => draw_capture_window(&pen, ctx, canvas, &record),
             Film::Ending { record, .. } => draw_ending_window(&pen, ctx, canvas, &record),
             _ => {}
+        }
+        if let State::Illustrated { image, x, y, .. } = &self.state {
+            canvas.blit(image, *x, *y);
+            return;
         }
         let State::Playing(player) = &self.state else { return };
         let (w, _) = player.decoder().size();

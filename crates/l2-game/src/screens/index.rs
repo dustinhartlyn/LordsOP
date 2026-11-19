@@ -212,9 +212,9 @@ impl Screen for IndexScreen {
         }
 
         let missing = if ctx.assets.shell.has_artwork() {
-            "GAME ARTWORK AND L2.ENG LOADED"
+            "ARTWORK LOADED"
         } else {
-            "NO GAME ARTWORK: EVERY SHELL IS DRAWN IN OUR OWN PLACEHOLDER"
+            "ARTWORK UNAVAILABLE"
         };
         text::draw(canvas, LEFT, 464, missing, ink.dim);
     }

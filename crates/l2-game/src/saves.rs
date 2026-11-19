@@ -73,6 +73,15 @@ pub fn dir() -> Option<PathBuf> {
     Some(data_home()?.join(APP_DIR).join("saves"))
 }
 
+/// Standalone world slots are not interchangeable with classic campaign maps.
+/// An explicitly supplied `LORDS2_SAVES` still takes precedence in either mode.
+pub fn standalone_scope() -> Option<ScopedDir> {
+    if std::env::var_os(DIR_VAR).is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    Some(scoped_dir(data_home()?.join(APP_DIR).join("standalone").join("saves")))
+}
+
 thread_local! {
     static SCOPED: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }

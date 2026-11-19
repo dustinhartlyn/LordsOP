@@ -5,6 +5,7 @@
 //! and Back is `L2.eng` 11/9. Scrolling is by the arrows only.
 
 pub mod layout;
+mod field_guide;
 
 use l2_view::Canvas;
 
@@ -67,11 +68,16 @@ impl HelpScreen {
 
     pub fn page(&mut self, ctx: &Ctx) -> Option<&Page> {
         if self.page.is_none() {
-            let hlp = ctx.assets.help.as_ref()?;
-            if self.back.is_empty() && self.offset == 0 {
-                self.offset = hlp.contents;
-            }
-            let topic = hlp.topic_at_offset(self.offset)?;
+            let topic = if let Some(hlp) = &ctx.assets.help {
+                if self.back.is_empty() && self.offset == 0 {
+                    self.offset = hlp.contents;
+                }
+                hlp.topic_at_offset(self.offset)?
+            } else if ctx.assets.is_original() {
+                field_guide::topic(self.offset)?
+            } else {
+                return None;
+            };
             let body = ctx.assets.shell.body.as_ref();
             let measure = |s: &str| body.map_or_else(|| l2_view::text::width(s), |f| f.width(s));
             let rows = layout::layout(&topic, TEXT.2, &measure);
@@ -93,7 +99,14 @@ impl HelpScreen {
     }
 
     pub fn follow(&mut self, ctx: &Ctx, hash: u32) -> bool {
-        let Some(to) = ctx.assets.help.as_ref().and_then(|h| h.jump(hash)) else { return false };
+        let to = if let Some(hlp) = &ctx.assets.help {
+            hlp.jump(hash)
+        } else if ctx.assets.is_original() {
+            field_guide::topic(hash).map(|_| hash)
+        } else {
+            None
+        };
+        let Some(to) = to else { return false };
         self.back.push(self.offset);
         self.go(to);
         true
@@ -153,7 +166,7 @@ impl Screen for HelpScreen {
     }
 
     fn update(&mut self, ctx: &mut Ctx) -> Transition {
-        if ctx.assets.help.is_none() {
+        if ctx.assets.help.is_none() && !ctx.assets.is_original() {
             return Transition::Pop;
         }
         for w in self.press.tick() {

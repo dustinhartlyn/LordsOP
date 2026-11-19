@@ -11,7 +11,27 @@ use font::Font;
 
 impl ShellAssets {
     pub fn load(vfs: &Vfs) -> ShellAssets {
-        let read = |name: &str| vfs.read(name).ok();
+        let loaded = Self::load_with(vfs, |_| None, false);
+        loaded.complain_about_what_is_missing();
+        loaded
+    }
+
+    pub(crate) fn load_original(
+        vfs: &Vfs,
+        read_original: impl Fn(&str) -> Option<Vec<u8>>,
+    ) -> ShellAssets {
+        Self::load_with(vfs, read_original, true)
+    }
+
+    fn load_with(
+        vfs: &Vfs,
+        read_original: impl Fn(&str) -> Option<Vec<u8>>,
+        original: bool,
+    ) -> ShellAssets {
+        let read = |name: &str| vfs.read(name).ok().or_else(|| read_original(name));
+        let skirmish_files = skirmish_files(vfs);
+        let heading_bytes = read(font::HEADING);
+        let heading = |bytes| Font::new(bytes, 24).ok();
         let mut sheets = BTreeMap::new();
         for name in SHEETS {
             if let Some(bytes) = read(name) {
@@ -22,33 +42,37 @@ impl ShellAssets {
         }
         let mut palettes = BTreeMap::new();
         for name in PALETTES {
-            if let Ok(p) = vfs.palette(name) {
+            if let Some(p) = read(name).and_then(|b| Palette::from_bytes(&b).ok()) {
                 palettes.insert(key(name), p);
             }
         }
         let mut troops = BTreeMap::new();
         for name in TROOPS_FILES {
-            if let Some(t) = read(name).and_then(|b| l2_formats::Troops::load(&b).ok()) {
-                troops.insert(key(name), t);
-            }
+            let table = read(name).and_then(|b| l2_formats::Troops::load(&b).ok());
+            if let Some(t) = table { troops.insert(key(name), t); }
         }
+        let original_troops = (original && troops.len() < TROOPS_FILES.len()).then(super::skirmish::troops);
         let loaded = ShellAssets {
+            original,
             eng: read("L2.eng").and_then(|b| Eng::parse(b).ok()),
-            battles: l2_formats::Battles::parse(&read(BATTLES_FILE).unwrap_or_default()),
+            battles: read(BATTLES_FILE).map_or_else(
+                || if original { super::skirmish::battles() } else { l2_formats::Battles::default() },
+                |b| l2_formats::Battles::parse(&b),
+            ),
             troops,
-            skirmish_files: skirmish_files(vfs),
-            skirmish_skr: skirmish_files(vfs)
-                .into_iter()
-                .filter_map(|n| read(&n).map(|b| (n, b)))
+            original_troops,
+            skirmish_skr: skirmish_files.iter()
+                .filter_map(|n| read(n).map(|b| (n.clone(), b)))
                 .collect(),
+            skirmish_files,
             body: read(font::BODY).and_then(|b| Font::new(b, 16).ok()).map(Font::raising_accents).map(|f| {
                 // C259: the heading face stands in for body text on a sharp canvas.
-                match read(font::HEADING).and_then(|b| Font::new(b, 24).ok()) {
+                match heading_bytes.clone().and_then(heading) {
                     Some(h) => f.with_sharp(h),
                     None => f,
                 }
             }),
-            heading: read(font::HEADING).and_then(|b| Font::new(b, 24).ok()),
+            heading: heading_bytes.and_then(heading),
             small: read(font::SMALL).and_then(|b| Font::new(b, 12).ok()),
             eight: read(font::EIGHT).and_then(|b| Font::new(b, 12).ok()),
             ten: read(font::TEN).and_then(|b| Font::new(b, 12).ok()),
@@ -62,7 +86,6 @@ impl ShellAssets {
                 e.group(g).iter().enumerate().for_each(|(i, s)| l2_net::trace_draw::name_string(g, i, s));
             }
         });
-        loaded.complain_about_what_is_missing();
         loaded
     }
 
@@ -109,9 +132,11 @@ impl ShellAssets {
 
     pub fn empty() -> ShellAssets {
         ShellAssets {
+            original: false,
             eng: None,
             battles: l2_formats::Battles::default(),
             troops: BTreeMap::new(),
+            original_troops: None,
             skirmish_files: Vec::new(),
             skirmish_skr: BTreeMap::new(),
             body: None,
@@ -159,16 +184,19 @@ impl ShellAssets {
         self.palettes.get(&key(name))
     }
 
-    /// One `L2.eng` string, or `""`.
+    /// A mod caption, or our authored caption for the built-in edition.
     pub fn text(&self, group: usize, index: usize) -> &str {
-        self.eng.as_ref().map_or("", |e| e.text(group, index))
+        self.eng.as_ref().and_then(|e| e.get(group, index)).unwrap_or_else(|| {
+            if self.original { super::words::caption(group, index) } else { "" }
+        })
     }
 
     /// The table `Troops_Load` (`00420000.c:4349-4369`) would have parsed:
-    /// `TROOPS.ENG` in multiplayer, else `TROOPS2.ENG` when the local player
-    /// attacks and `TROOPS3.ENG` when he does not.
+    /// `TROOPS.ENG` in multiplayer, else `TROOPS2.ENG` for a defending
+    /// player or `TROOPS3.ENG` for an attacker.
     pub fn troops(&self, multiplayer: bool, local_defends: bool) -> Option<&l2_formats::Troops> {
         self.troops.get(&key(l2_formats::troops::file_for(multiplayer, local_defends)))
+            .or(self.original_troops.as_ref())
     }
 
     /// One `.skr` by the name page 13 lists, parsed — `DAT_0053F5FC` as
@@ -178,7 +206,7 @@ impl ShellAssets {
     }
 
     pub fn has_artwork(&self) -> bool {
-        self.eng.is_some() && self.body.is_some() && !self.sheets.is_empty()
+        self.body.is_some() && !self.sheets.is_empty()
     }
 }
 

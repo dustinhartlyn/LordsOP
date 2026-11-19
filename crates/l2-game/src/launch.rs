@@ -1,9 +1,9 @@
-//! Finding the install and failing where a player can see it. [D] ours, C238:
+//! Selecting an optional classic installation and failing where a player can see it.
 //! a release build has no console (`windows_subsystem`), so stderr alone is lost.
 
 use std::path::PathBuf;
 
-use l2_game::install::{self, Source};
+use l2_game::install;
 
 use crate::os;
 
@@ -97,66 +97,18 @@ pub(crate) fn fatal(text: &str) -> ! {
     std::process::exit(1)
 }
 
-/// Argument, `LORDS2_DIR`, the remembered path, beside the exe, GOG's registry
-/// key, the common folders, then the picker. An argument that is not an
-/// install is an error, not a fall-through: the player named it.
-pub(crate) fn install_dir(arg: Option<PathBuf>, prefs: &l2_game::game::Prefs) -> PathBuf {
-    if let Some(d) = arg {
-        if !install::is_install(&d) {
-            fatal(&not_an_install(&d));
-        }
-        return remembered(d, prefs);
+/// A directory or explicit environment setting opts into classic mode.
+/// Never search the user's computer for stock assets.
+pub(crate) fn install_dir(arg: Option<PathBuf>) -> Option<PathBuf> {
+    let dir = arg.or_else(|| std::env::var_os(install::DIR_VAR)
+        .filter(|d| !d.is_empty()).map(PathBuf::from))?;
+    if !install::is_install(&dir) {
+        fatal(&format!(
+            "{} is not a Lords of the Realm II folder: it needs {} and one of {}.",
+            dir.display(), install::REQUIRED, install::ANY_OF.join(", ")
+        ));
     }
-    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-    let exe = std::env::current_exe().ok().and_then(|e| e.parent().map(PathBuf::from));
-    let drive = env("SystemDrive").unwrap_or_else(|| "C:".into());
-    let mut c: Vec<(Source, PathBuf)> = Vec::new();
-    c.extend(env(install::DIR_VAR).map(|d| (Source::Environment, d.into())));
-    c.extend(l2_game::prefs::remembered_install().map(|d| (Source::Remembered, d)));
-    if let Some(e) = exe {
-        c.push((Source::BesideExe, e.clone()));
-        c.extend(e.parent().map(|p| (Source::BesideExe, p.to_path_buf())));
-    }
-    c.extend(os::registry_path(install::GOG_KEY, "path").map(|d| (Source::Store, d)));
-    let pf86 = env("ProgramFiles(x86)");
-    c.extend(install::common(pf86.as_deref(), &drive).into_iter().map(|d| (Source::Common, d)));
-    if let Some((_, d)) = install::first(c) {
-        return remembered(d, prefs);
-    }
-    remembered(pick(), prefs)
-}
-
-fn pick() -> PathBuf {
-    let intro = "open-lords2 needs your own copy of Lords of the Realm II.\n\n\
-        Choose the folder that holds Lords2.exe and L2_maps.dat.";
-    if !os::ask(TITLE, intro) {
-        std::process::exit(2);
-    }
-    loop {
-        match os::pick_folder("The Lords of the Realm II folder (Lords2.exe, L2_maps.dat)") {
-            Some(d) if install::is_install(&d) => return d,
-            Some(d) => os::error(TITLE, &not_an_install(&d)),
-            None => std::process::exit(2),
-        }
-    }
-}
-
-fn not_an_install(d: &std::path::Path) -> String {
-    format!(
-        "{} is not a Lords of the Realm II folder: it needs {} and one of {}.",
-        d.display(),
-        install::REQUIRED,
-        install::ANY_OF.join(", ")
-    )
-}
-
-fn remembered(d: PathBuf, prefs: &l2_game::game::Prefs) -> PathBuf {
-    if l2_game::prefs::remembered_install().as_deref() != Some(d.as_path()) {
-        if let Err(e) = l2_game::prefs::remember_install(prefs, &d) {
-            eprintln!("preferences: {e}");
-        }
-    }
-    d
+    Some(dir)
 }
 
 /// C257: this install's id, made once and kept in `prefs.ini`. Not a secret

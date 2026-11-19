@@ -11,7 +11,7 @@ use l2_game::screen::{Ctx, Machine, ScreenId};
 use l2_game::screens::setup::SetupPage;
 use l2_game::{scenario, Game};
 use l2_view::Canvas;
-use pixels::{Pixels, SurfaceTexture};
+use pixels::{PixelsBuilder, SurfaceTexture};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -40,7 +40,14 @@ impl ApplicationHandler for App {
         let surface =
             SurfaceTexture::new(size.width.max(1), size.height.max(1), Arc::clone(&window));
         let k = self.buffer_scale(size.width, size.height);
-        let pixels = Pixels::new(CANVAS_W * k, CANVAS_H * k, surface).expect("create pixels");
+        let builder = PixelsBuilder::new(CANVAS_W * k, CANVAS_H * k, surface);
+        // Auto-selection can pick a backend that loses the device on Windows
+        // hybrid graphics. Use DX12 by default, preserving explicit overrides.
+        #[cfg(target_os = "windows")]
+        let builder = builder.wgpu_backend(
+            pixels::wgpu::Backends::from_env().unwrap_or(pixels::wgpu::Backends::DX12),
+        );
+        let pixels = builder.build().expect("create pixels");
         self.window = Some(window);
         self.pixels = Some(pixels);
         self.build_cursors(event_loop);

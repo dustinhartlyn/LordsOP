@@ -23,6 +23,20 @@ impl<'a> Pen<'a> {
     }
 
     fn style(&self, colour: u8) -> font::Style {
+        if self.assets.original {
+            let colour = match colour {
+                font::TEXT => 0xFF,
+                font::HIGHLIGHT | 1 => 0xFB,
+                font::DISABLED => 0xF2,
+                0x66 => 0xFE, // Dark foreground for the selected setup row.
+                other => other,
+            };
+            return font::Style {
+                colour,
+                shadow: self.shadow.map(|_| (0xFE, 0xFE)),
+                caps: self.caps.map(|_| 0xFB),
+            };
+        }
         font::Style { colour, shadow: self.shadow, caps: self.caps }
     }
     fn fallback(&self, colour: u8) -> u8 {

@@ -1,13 +1,13 @@
 open-lords2 — notice
 ====================
 
-This project is an independent reimplementation of the *engine* of Lords of
-the Realm II. It is licensed under the MIT License; see LICENSE.
+This project is an independent standalone medieval strategy game inspired by
+Lords of the Realm II. The engine, artwork and worlds authored for this
+project are licensed under the MIT License; see LICENSE.
 
-**It contains no code, art, sound, music, video or data from the original
-game.** None of the publisher's assets are distributed here, and none ever
-will be. To play, you must own and supply your own copy of Lords of the
-Realm II; the engine reads that installation and never writes to it.
+It distributes no publisher code, art, sound, music, video or data from
+Lords of the Realm II. Optional classic mode reads an installation supplied
+by the player and never writes to it.
 
 Lords of the Realm II is copyright Sierra On-Line / Impressions Games and its
 present rights holders, who are not affiliated with this project and do not
