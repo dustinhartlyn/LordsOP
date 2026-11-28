@@ -2,8 +2,9 @@ open-lords2
 ===========
 
 Open Lords II is a standalone medieval strategy game inspired by Lords of
-the Realm II (Sierra / Impressions, 1996). The included worlds, art and fonts
-are original to this project. No publisher assets are distributed.
+the Realm II (Sierra / Impressions, 1996). The included worlds and art are
+original to this project. No publisher assets are distributed. See NOTICE
+for the standalone interface font license.
 
 Start playing
 -------------
@@ -11,6 +12,10 @@ Start playing
 Unpack the archive and launch l2-game.exe on Windows or ./l2-game on Linux.
 No installation directory or extra asset download is needed.
 Windows uses Direct3D 12 by default. No graphics environment variable is needed.
+
+Standalone fits a 4:3 picture to the window. Campaign terrain, the village
+panorama and battle maps render at up to 1920 x 1440 with scalable text.
+Classic mode and indexed graphics mods keep pixel-perfect scaling.
 
 For optional classic mode, supply your own read-only Lords of the Realm II
 folder as a command-line argument or set LORDS2_DIR. The folder must contain
@@ -39,6 +44,12 @@ Keys
   Ctrl+D      show or hide our debug overlay
 
 The in-game Help menu opens the standalone field guide.
+
+On the campaign map, the right-hand dashboard shows county status, policy,
+and actions. Choose Village to see what each job does. Click a job card for
+details. In your own county, drag a box around worker groups on one card,
+release, and click a destination card to reassign them. Right-click cancels
+a held selection.
 
 Multiplayer
 -----------

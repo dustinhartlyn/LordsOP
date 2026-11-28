@@ -93,8 +93,10 @@ fn tile(bank: usize, frame: i32, season: usize, far: bool) -> Art {
             let u = x * 2 + 1 - w;
             let v = (y * 2 + 1 - h) * 2;
             let n = noise(x, y, seed);
-            let comb = noise(x / 6, y / 3, seed + 1);
-            let grain = ((n % 5 == 0) as u8) + ((comb % 5 == 0) as u8);
+            let comb = noise(x / 9, y / 5, seed + 1);
+            // Sparse flecks keep landforms readable from a distance. Long,
+            // deliberately spaced highlights belong to water, not the entire map.
+            let grain = u8::from(comb % 19 == 0 && n % 5 < 2);
             let mut c = land + 3 + grain;
             if bank == 0 && frame < 6 {
                 c = INK + 1 + grain;
@@ -103,11 +105,14 @@ fn tile(bank: usize, frame: i32, season: usize, far: bool) -> Art {
                                  60 + u - v, 58 + u, 60 + u + v, 58 + v];
                 let edge = distances.into_iter().enumerate().filter(|(i, _)| coast & (1 << i) != 0)
                     .map(|(i, d)| d / if i % 2 == 0 { 2 } else { 1 }).min().unwrap_or(60);
-                let edge = edge + (comb % 5) as i32;
-                c = if edge < 7 { land + 2 + grain }
-                    else if edge < 12 { PARCHMENT + 3 + grain }
-                    else if edge < 16 || (n % 13 < 4 && (x + y * 3 + frame) % 19 < 5) { WATER + 5 + grain.min(1) }
-                    else { WATER + 2 + grain };
+                let edge = edge + (comb % 3) as i32;
+                let wave = (x + frame * 7).rem_euclid(31) < 5 + (n % 3) as i32
+                    && (y + frame * 2).rem_euclid(8) == 0;
+                c = if edge < 6 { land + 3 }
+                    else if edge < 10 { PARCHMENT + 5 }
+                    else if edge < 13 { WATER + 5 }
+                    else if wave { WATER + 4 }
+                    else { WATER + 2 };
             } else if field {
                 let furrow = (u + v + 118 + frame * 2) % 15;
                 let inside = u.abs() + v.abs() < 50;
@@ -130,10 +135,10 @@ fn tile(bank: usize, frame: i32, season: usize, far: bool) -> Art {
                     .filter(|(i, (_, d))| road & (1 << i) != 0 && *d >= -4)
                     .map(|(_, (d, _))| d).min().unwrap_or(60);
                 track = dist < 10;
-                if track { c = if dist < 6 { PARCHMENT + 3 + grain } else { WOOD + 3 + grain }; }
+                if track { c = if dist < 6 { PARCHMENT + 4 } else { WOOD + 3 }; }
             }
             if boundary != 0 && !track && along.into_iter().enumerate().any(|(i, d)| boundary & (1 << i) != 0 && d >= 50) {
-                c = if dither(x, y) { GOLD + 5 } else { WOOD + 2 };
+                c = if dither(x, y) { GOLD + 6 } else { land + 2 };
             }
             a.dot(x, y + lift, c);
         }
@@ -142,7 +147,12 @@ fn tile(bank: usize, frame: i32, season: usize, far: bool) -> Art {
     if forest {
         for (i, (x, dy)) in [(20, -5), (34, -3), (13, 2), (27, 4), (43, 4), (33, 9)].into_iter().enumerate() {
             let v = noise(x, dy, seed + i as u32);
-            pine(&mut a, x + (v % 5) as i32 - 2, middle + dy, 5 + (v % 3) as i32, 12 + (v % 7) as i32, season);
+            let (x, w, h) = (x + (v % 5) as i32 - 2, 5 + (v % 3) as i32, 12 + (v % 7) as i32);
+            if (frame as usize + i) % 3 == 0 {
+                hardwood(&mut a, x, middle + dy, w, h, season);
+            } else {
+                pine(&mut a, x, middle + dy, w, h, season);
+            }
         }
     }
     match bank {
@@ -193,6 +203,23 @@ fn pine(a: &mut Art, x: i32, y: i32, w: i32, h: i32, season: usize) {
         a.poly(&[(x, top + 2), (x - spread + 1, low - 1), (x - 1, low), (x + 1, low - 2)], if season == 3 { ICE + 4 } else { green + 5 });
         a.line(x + 1, top + 3, x + spread - 1, low - 1, green + 2);
     }
+}
+
+fn hardwood(a: &mut Art, x: i32, y: i32, w: i32, h: i32, season: usize) {
+    a.ellipse(x + 3, y, w, 2, LAND[season] + 1);
+    a.line(x, y, x, y - h + 2, WOOD + 3);
+    if season == 3 {
+        for (dx, dy) in [(-w, -h+4), (w, -h+3), (-2, -h-1)] {
+            a.line(x, y - h/2, x + dx, y + dy, WOOD + 4);
+            a.dot(x + dx, y + dy - 1, ICE + 6);
+        }
+        return;
+    }
+    let foliage = LEAF[season];
+    a.ellipse(x + 1, y - h/2 - 3, w+1, h/3 + 1, foliage + 1);
+    a.ellipse(x - 2, y - h/2 - 5, w, h/3, foliage + 3);
+    a.ellipse(x - 3, y - h/2 - 6, w/2, h/5, foliage + 5);
+    a.ellipse(x + 1, y - h/2 - 8, w/2, 2, foliage + 4);
 }
 
 fn peak(a: &mut Art, x: i32, y: i32, w: i32, h: i32, rock: u8, seed: u32) {
@@ -634,15 +661,13 @@ fn panel(frame: usize) -> Art {
     match frame {
         52..=195 => {
             let mut a = Art::new(16, 16);
-            finish(&mut a, INK, 3, frame as u32);
+            a.rect(0, 0, 16, 16, INK + 1);
             a
         }
         196..=203 => {
             let mut a = Art::new(24, 24);
-            finish(&mut a, SLATE, 2, frame as u32);
-            for (y, color) in [(0, GOLD + 3), (1, GOLD + 6), (21, WOOD + 4), (22, GOLD + 5), (23, WOOD + 1)] {
-                a.line(0, y, 23, y, color);
-            }
+            a.rect(0, 0, 24, 24, SLATE);
+            a.rect(0, 23, 24, 1, SLATE + 3);
             a
         }
         256..=260 => {
@@ -663,22 +688,17 @@ fn panel(frame: usize) -> Art {
         }
         _ => {
             let mut a = Art::new(16, 16);
-            finish(&mut a, WOOD, if frame >= 204 { 4 } else { 3 }, frame as u32);
+            a.rect(0, 0, 16, 16, INK + 1);
             let i = frame % 204;
-            let side = match i { 4..=15 => 1, 16..=27 => 2, 28..=39 => 4, 40..=51 => 8, 0 => 5, 1 => 9, 2 => 10, _ => 6 };
-            for j in 0..16 {
-                for (k, c) in [GOLD + 2, GOLD + 6, WOOD + 2, GOLD + 4].into_iter().enumerate() {
-                    let k = k as i32;
-                    if side & 3 != 0 { a.dot(j, k, c); a.dot(j, 15 - k, c); }
-                    if side & 12 != 0 { a.dot(k, j, c); a.dot(15 - k, j, c); }
-                }
-            }
-            if i < 4 {
-                stud(&mut a, 8, 8);
-                a.line(4, 12, 12, 4, GOLD + 4);
-            } else if (i - 4) % 4 == 2 {
-                stud(&mut a, 8, 8);
-            }
+            let side = match i {
+                4..=15 => 1, 16..=27 => 2, 28..=39 => 4, 40..=51 => 8,
+                0 => 5, 1 => 9, 2 => 10, _ => 6,
+            };
+            let stroke = if frame >= 204 { SLATE + 4 } else { SLATE + 3 };
+            if side & 1 != 0 { a.rect(0, 1, 16, 1, stroke); }
+            if side & 2 != 0 { a.rect(0, 14, 16, 1, stroke); }
+            if side & 4 != 0 { a.rect(1, 0, 1, 16, stroke); }
+            if side & 8 != 0 { a.rect(14, 0, 1, 16, stroke); }
             a
         }
     }

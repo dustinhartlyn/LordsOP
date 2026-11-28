@@ -94,7 +94,13 @@ impl App {
 
     fn remote_shot(&mut self, dir: &std::path::Path, name: &str) {
         let mut canvas = Canvas::screen();
-        let k = if self.game.prefs.sharp_text { canvas.enable_sharp(); l2_view::sharp::SCALE } else { 1 };
+        if self.canvas.has_detail() {
+            canvas.enable_detail();
+        }
+        if self.canvas.is_sharp() {
+            canvas.enable_sharp();
+        }
+        let k = if canvas.has_detail() || canvas.is_sharp() { l2_view::detail::SCALE } else { 1 };
         let App { game, assets, machine, .. } = self;
         machine.draw(&Ctx { game, assets }, &mut canvas);
         let mut rgba = vec![0u8; 640 * 480 * 4 * k * k];

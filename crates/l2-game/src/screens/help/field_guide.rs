@@ -9,7 +9,7 @@ pub(super) fn topic(id: u32) -> Option<Topic> {
         ], &[(1, "Counties and supplies"), (2, "Armies and battles"), (3, "Saving and multiplayer")]),
         1 => ("Counties and supplies", &[
             "Select an owned county and use its sidebar to review population, stores, taxes and rations. The farms need workers and land. Grain and cattle both help feed the population.",
-            "Move workers between farming and industry, and open the production rows to set priorities. Wood, stone and iron can be traded. The blacksmith turns supplies into weapons.",
+            "Use Village in the sidebar to see which jobs are available and where people are working. Select workers, then choose a new job. The county dashboard also lets you adjust the overall split between farming and industry.",
             "Use the supplies screen to send food or materials to another county. Check your stocks before winter. High taxes and low rations can make a county revolt.",
         ], &[(0, "Field guide contents"), (2, "Armies and battles")]),
         2 => ("Armies and battles", &[

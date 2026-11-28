@@ -50,6 +50,8 @@ l2-sim = { path = "../l2-sim" }
 l2-view = { path = "../l2-view" }
 pixels = "0.17.2"
 winit = "0.30.13"
+ab_glyph = "0.2.32"
+tiny-skia = { version = "0.11.4", default-features = false, features = ["std", "simd"] }
 # Sound, and the third thing in the workspace that touches the machine rather
 # than the world. It is here for the same reason `winit` is: `src/audio` opens
 # an output device, and a crate that opens a device is a crate whose behaviour

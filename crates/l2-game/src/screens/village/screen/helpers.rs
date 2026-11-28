@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 use super::*;
 use super::screen::*;
-use super::*;
 use l2_kingdom::county::County;
 use l2_kingdom::tables::{JOB_IDLE_TOWNSFOLK, JOB_NAMES};
 use l2_view::village::{self as vill, ICONS_PER_CLUSTER};
@@ -9,6 +8,7 @@ use l2_view::{text, Canvas};
 use crate::input::{Event, Key, Rect};
 use crate::screen::{Ctx, Screen, ScreenId, Transition};
 use crate::widget;
+use super::planner;
 
 impl VillageScreen {
     pub fn new(county: u8) -> VillageScreen {
@@ -72,7 +72,7 @@ impl VillageScreen {
     /// records 3 and 1. **The resource comes from the map**, not from the
     /// county record: `County_PlaceResourceSites` reads plane 2 on `Town`-bank
     /// tiles at load and sets these bytes.
-    fn resources(c: &County) -> (bool, bool) {
+    pub(super) fn resources(c: &County) -> (bool, bool) {
         (c.industry[3].has_resource, c.industry[1].has_resource)
     }
 
@@ -159,9 +159,15 @@ impl VillageScreen {
         let Some((x0, y0, x1, y1)) = self.band() else { return };
         let top = Self::top_y(ctx);
         let icons = Self::icons(c);
+        let standalone = ctx.assets.is_original();
 
         for cluster in 0..vill::CLUSTER_COUNT {
-            let (bx0, by0, bx1, by1) = vill::cluster_band_box(cluster, top);
+            let (bx0, by0, bx1, by1) = if standalone {
+                let r = planner::site_rect(cluster);
+                (r.x, r.y, r.x + r.w - 1, r.y + r.h - 1)
+            } else {
+                vill::cluster_band_box(cluster, top)
+            };
             if x0 > bx1 || bx0 > x1 || y0 > by1 || by0 > y1 {
                 continue;
             }
@@ -170,7 +176,11 @@ impl VillageScreen {
                 if value == 0 || value == vill::ICON_SHORTFALL {
                     continue;
                 }
-                let (px, py) = vill::icon_hit_point(cluster, slot, top);
+                let (px, py) = if standalone {
+                    planner::group_point(cluster, slot)
+                } else {
+                    vill::icon_hit_point(cluster, slot, top)
+                };
                 if px < x0 || px > x1 || py < y0 || py > y1 {
                     continue;
                 }
@@ -197,18 +207,15 @@ impl VillageScreen {
 
     /// `FUN_004399B0`: the drop. Returns true if anything moved.
     pub(super) fn drop_on(&mut self, ctx: &mut Ctx, x: i32, y: i32) -> bool {
-        let top = Self::top_y(ctx);
-        let Some(art) = ctx.assets.village.as_ref() else {
+        let standalone = ctx.assets.is_original();
+        if ctx.assets.village.is_none() {
             self.status = "NO VILL_GD8.PL8 - NOTHING TO DROP ON".into();
             return false;
-        };
-        let target = art.cluster_at(x, y, top);
-        if target == 0 {
-            return false;
         }
+        let Some(target) = Self::cluster_at(ctx, x, y) else { return false };
         if target == self.drag_cluster {
             self.clear_drag();
-            self.status = "PUT BACK".into();
+            self.status = if standalone { "Workers put back." } else { "PUT BACK" }.into();
             return false;
         }
         let Some(c) = self.county_ref(&*ctx) else { return false };
@@ -218,22 +225,36 @@ impl VillageScreen {
         let moved = ctx.issue(crate::command::MoveLabour { county: self.county, from, to, icons });
         self.clear_drag();
         self.status = if moved > 0 {
-            format!("{moved} TO {}", JOB_NAMES[to].to_uppercase())
+            if standalone {
+                format!("{moved} reassigned to {}.", JOB_NAMES[to].to_lowercase())
+            } else {
+                format!("{moved} TO {}", JOB_NAMES[to].to_uppercase())
+            }
+        } else if standalone {
+            "No workers reassigned.".into()
         } else {
             "NOBODY MOVED".into()
         };
         moved > 0
     }
 
+    /// Standalone uses the labelled cards instead of the picture's hotspots.
+    /// The installation grid remains required, and both paths return the
+    /// same one-based cluster numbers for the shared job and drop logic.
+    fn cluster_at(ctx: &Ctx, x: i32, y: i32) -> Option<usize> {
+        let art = ctx.assets.village.as_ref()?;
+        if ctx.assets.is_original() {
+            return planner::site_at(x, y).filter(|_| art.has_grid()).map(|i| i + 1);
+        }
+        let cluster = art.cluster_at(x, y, Self::top_y(ctx));
+        (cluster != 0).then_some(cluster)
+    }
+
     /// A click that never became a drag: the job popup for whatever cluster it
     /// landed on. `FUN_0043A123`, whose one refusal is cluster 0 in a county
     /// with neither a quarry nor a mine.
     pub(super) fn job_under(&self, ctx: &Ctx, x: i32, y: i32) -> Option<usize> {
-        let top = Self::top_y(ctx);
-        let cluster = ctx.assets.village.as_ref()?.cluster_at(x, y, top);
-        if cluster == 0 {
-            return None;
-        }
+        let cluster = Self::cluster_at(ctx, x, y)?;
         let c = self.county_ref(ctx)?;
         let (quarry, mine) = Self::resources(c);
         vill::cluster_is_clickable(cluster - 1, quarry, mine)
@@ -242,6 +263,10 @@ impl VillageScreen {
 
     /// Whether a press here arms the band at all — `FUN_004393EB`'s guard.
     pub(super) fn in_band_area(ctx: &Ctx, x: i32, y: i32) -> bool {
+        if ctx.assets.is_original() {
+            return planner::in_work_area(x, y)
+                && ctx.assets.village.as_ref().is_some_and(vill::VillageArt::has_grid);
+        }
         let top = Self::top_y(ctx);
         (0..=vill::BAND_X_MAX).contains(&x) && y >= top && y < top + vill::BAND_H
     }
@@ -251,12 +276,14 @@ impl VillageScreen {
     /// click only from x `0x40`, the left edge of the picture. Returns the
     /// cluster it landed on, 1-based, or `None`.
     pub(super) fn double_click_cluster(&self, ctx: &Ctx, x: i32, y: i32) -> Option<usize> {
+        if ctx.assets.is_original() {
+            return Self::cluster_at(ctx, x, y);
+        }
         let top = Self::top_y(ctx);
         if x < vill::SCENE_X || x > vill::BAND_X_MAX || y < top || y >= top + vill::BAND_H {
             return None;
         }
-        let cluster = ctx.assets.village.as_ref()?.cluster_at(x, y, top);
-        (cluster != 0).then_some(cluster)
+        Self::cluster_at(ctx, x, y)
     }
 
     /// The double click, once a cluster is known — `FUN_00439EDB`.
@@ -266,7 +293,13 @@ impl VillageScreen {
         } else {
             ctx.issue(crate::command::BalanceLabour { county: self.county, cluster, fill: true })
         };
-        self.status = if moved > 0 { format!("{moved} REASSIGNED") } else { "NOTHING TO DO".into() };
+        self.status = if ctx.assets.is_original() {
+            if moved > 0 { format!("{moved} workers reassigned.") } else { "No workers to rebalance.".into() }
+        } else if moved > 0 {
+            format!("{moved} REASSIGNED")
+        } else {
+            "NOTHING TO DO".into()
+        };
     }
 
     /// **The original's number is 300 milliseconds** — the frame poll at

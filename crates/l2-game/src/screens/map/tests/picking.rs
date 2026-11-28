@@ -56,6 +56,37 @@ fn the_pick_diamond_is_the_lattice_and_not_the_picture() {
 }
 
 #[test]
+fn bounded_picker_preserves_legacy_choices_at_tile_vertices_and_screen_edges() {
+    let mut screen = MapScreen::new();
+    for zoom in [NEAR, FAR] {
+        screen.zoom = zoom;
+        for view in [Viewport::new(60, 30), Viewport::new(0, 0), Viewport::new(120, 58)] {
+            screen.view = view.clamped(&zoom);
+            let clip = zoom.clip();
+            let centres: Vec<_> = (0..l2_kingdom::MAP_DIM).flat_map(|y| {
+                (0..l2_kingdom::MAP_DIM).filter_map(move |x| {
+                    campaign::tile_centre(view.clamped(&zoom), &zoom, x, y)
+                        .map(|p| (x as u8, y as u8, p))
+                })
+            }).collect();
+            let points = centres.iter().flat_map(|&(_, _, (x, y))| {
+                [(x + zoom.half_pitch, y), (x, y - zoom.row_step), (x, y),
+                    (x + zoom.half_pitch / 2, y + zoom.row_step / 2)]
+            }).chain([(clip.x0, clip.y0), (clip.x1 - 1, clip.y1 - 1), (clip.x1, clip.y0)]);
+            for (x, y) in points {
+                let expected = if clip.contains(x, y) {
+                    centres.iter().find(|&&(_, _, (cx, cy))| {
+                        (x - cx).abs() * zoom.row_step + (y - cy).abs() * zoom.half_pitch
+                            <= zoom.row_step * zoom.half_pitch
+                    }).map(|&(tx, ty, _)| (tx, ty))
+                } else { None };
+                assert_eq!(screen.pick_tile(x, y), expected, "zoom {}: ({x}, {y})", zoom.id);
+            }
+        }
+    }
+}
+
+#[test]
 fn the_screen_opens_at_the_originals_zoom_and_scroll_origin() {
     let s = MapScreen::new();
     assert_eq!(s.zoom().id, NEAR.id);

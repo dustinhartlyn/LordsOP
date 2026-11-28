@@ -75,8 +75,9 @@ const SETUP_VALUES: &[&str] = &[
 ];
 
 const NOUNS: &[&str] = &[
-    "crown", "crowns", "sack", "sacks", "head", "head", "bushel", "bushels", "person", "people", "plot", "plots", "ration", "rations", "load", "loads",
-    "weapon", "weapons", "pike", "pikes", "bow", "bows", "mace", "maces", "crossbow", "crossbows", "sword", "swords", "mail", "mail", "worker", "workers",
+    "crown", "crowns", "sack", "sacks", "head", "head", "bushel", "bushels", "person", "people", "plot", "plots",
+    "tonne of iron", "tonnes of iron", "tonne of stone", "tonnes of stone", "tonne of timber", "tonnes of timber",
+    "pike", "pikes", "bow", "bows", "mace", "maces", "crossbow", "crossbows", "sword", "swords", "mail", "mail", "worker", "workers",
     "farmer", "farmers", "herder", "herders", "dairy hand", "dairy hands", "builder", "builders", "miner", "miners", "quarrier", "quarriers", "woodcutter", "woodcutters", "mason", "masons", "smith", "smiths", "soldier", "soldiers",
     "peasant", "peasants", "crossbowman", "crossbowmen", "maceman", "macemen", "swordsman", "swordsmen", "pikeman", "pikemen", "archer", "archers", "knight", "knights", "season", "seasons", "engine", "engines", "turn", "turns", "man total", "men total",
 ];

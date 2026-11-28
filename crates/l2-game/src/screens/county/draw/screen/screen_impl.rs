@@ -149,7 +149,9 @@ impl Screen for CountyScreen {
 
     fn draw(&mut self, ctx: &Ctx, canvas: &mut Canvas) {
 
-        draw_strip(ctx, canvas, self.county, Some(self.panel));
+        if !ctx.assets.is_original() {
+            draw_strip(ctx, canvas, self.county, Some(self.panel));
+        }
         self.draw_panel(ctx, canvas);
 
     }

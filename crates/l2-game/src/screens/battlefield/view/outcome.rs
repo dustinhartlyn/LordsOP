@@ -28,7 +28,7 @@ pub(super) fn draw_outcome(p: &Pen, canvas: &mut Canvas, ctx: &Ctx, live: &LiveB
     if ctx.game.prefs.animations && live.choice_owner != 0 {
         let palette =
             ctx.assets.shell.palette(l2_view::scene::TILE_PALETTE).unwrap_or(&ctx.assets.palette);
-        canvas.remap(&l2_view::canvas::shade_table(palette));
+        canvas.shade(palette);
         p.window(canvas, 0x10, 0x30, 0x1C, 0x16, BOX_SET);
         p.inset(canvas, crate::input::Rect::new(0x27, 0x48, 0x192, 0xC2));
         p.ok_button(canvas, 0x1A0, 0x160, 0);

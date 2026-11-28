@@ -31,18 +31,25 @@ impl MapScreen {
         // is 60, so the diamonds were two pixels narrow and **did not tile the
         // plane** — 56 dead pixels around every tile centre.
         let (hw, hh) = (self.zoom.half_pitch, self.zoom.row_step);
-        let dim = l2_kingdom::MAP_DIM;
-        for ty in 0..dim {
-            for tx in 0..dim {
+        let row = self.view.row + (y - self.zoom.view_y - self.zoom.tile_h / 2).div_euclid(hh);
+        let mut nearest = None;
+        // A diamond reaches just one row in either direction. Limit the
+        // search to neighbouring centres and keep the old row-major tie rule.
+        for r in row - 1..=row + 1 {
+            let origin = self.zoom.view_x + self.zoom.tile_w / 2 - (r & 1) * hw;
+            let col = self.view.col + (x - origin).div_euclid(self.zoom.pitch);
+            for c in col..=col + 1 {
+                let Some((tx, ty)) = campaign::cell_to_tile(r, c) else { continue };
                 let Some((cx, cy)) = campaign::tile_centre(self.view, &self.zoom, tx, ty) else {
                     continue;
                 };
                 if (x - cx).abs() * hh + (y - cy).abs() * hw <= hw * hh {
-                    return Some((tx as u8, ty as u8));
+                    let cell = (ty as u8, tx as u8);
+                    nearest = Some(nearest.map_or(cell, |old: (u8, u8)| old.min(cell)));
                 }
             }
         }
-        None
+        nearest.map(|(ty, tx)| (tx, ty))
     }
 
     /// `Map_ResolvePick` (`0x0046D5FE`) reads it out of the tile record —

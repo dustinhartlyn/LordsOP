@@ -5,6 +5,7 @@ pub use primitives::*;
 mod pen;
 pub use pen::*;
 mod wrap;
+mod typeface;
 
 use super::*;
 use super::assets::*;

@@ -124,6 +124,11 @@ pub(crate) fn draw_menu_bar(canvas: &mut Canvas, ctx: &Ctx, battle: bool) {
 }
 
 pub(crate) fn draw_right_panel(screen: &MapScreen, canvas: &mut Canvas, ctx: &Ctx) {
+    if ctx.assets.is_original() {
+        super::sidebar::draw(screen, canvas, ctx);
+        return;
+    }
+
     let ink = &ctx.assets.ink;
     let game = &ctx.game;
     let k = &game.kingdom;

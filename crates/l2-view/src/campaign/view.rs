@@ -213,6 +213,16 @@ impl Viewport {
 
 pub type Fog<'a> = Option<&'a dyn Fn(usize, usize) -> bool>;
 
+/// Lattice cells in back-to-front paint order, including both clipped half-tiles
+/// on the offset rows.
+pub fn visible_cells(view: Viewport, zoom: &Zoom) -> impl Iterator<Item = (i32, i32)> {
+    let cols = zoom.cols;
+    (view.row..=view.row + zoom.rows).flat_map(move |row| {
+        let span = cols + (row & 1);
+        (view.col..view.col + span).map(move |col| (row, col))
+    })
+}
+
 /// `fog` is the one input the five terrain painters of the original read that
 /// is not the map, and it changes two things, each **`[V]`** out of the
 /// decompilation:
@@ -244,49 +254,43 @@ pub fn draw(
 ) -> usize {
     let clip = zoom.clip();
     let mut drawn = 0;
-    for dr in 0..=zoom.rows {
-        let row = view.row + dr;
-        let span = if row & 1 == 1 { zoom.cols + 1 } else { zoom.cols };
-        for dc in 0..span {
-            let col = view.col + dc;
-            let (sx, sy) = cell_to_screen(view, zoom, row, col);
-            match lattice.tile(row, col) {
-                Some((x, y)) if fog.is_some_and(|hidden| hidden(x, y)) => {
-                    let flat = Clip { y0: clip.y0.max(sy), ..clip };
-                    let county = map.county_at(x, y);
-                    if blit_cell(canvas, assets, zoom, season, 0, 0, sx, sy, flat, tags, county) {
-                        drawn += 1;
-                    }
+    for (row, col) in visible_cells(view, zoom) {
+        let (sx, sy) = cell_to_screen(view, zoom, row, col);
+        match lattice.tile(row, col) {
+            Some((x, y)) if fog.is_some_and(|hidden| hidden(x, y)) => {
+                let flat = Clip { y0: clip.y0.max(sy), ..clip };
+                let county = map.county_at(x, y);
+                if blit_cell(canvas, assets, zoom, season, 0, 0, sx, sy, flat, tags, county) {
+                    drawn += 1;
                 }
-                Some((x, y)) => {
-                    let (bank_byte, frame) = overrides
-                        .get(x, y)
-                        .unwrap_or((map.at(Plane::GfxBank, x, y), map.at(Plane::GfxIndex, x, y)));
-                    // `Map_ResolvePick` reads the bank as `tile.bank & 0x1c`,
-                    // and the mask is not decoration: at run time the same byte
-                    // also carries `0x01`, `0x20`, `0x40` and `0x80`, which
-                    // `County_FindTownTile` and `FUN_0046ac22` set. Nothing on
-                    // disk has them — 0 of 180,224 tiles — so this changed no
-                    // pixel, and it is the difference between a renderer that
-                    // works on the file and one that works on the game's state.
-                    let bank = ((bank_byte & BANK_MASK) >> 2) as usize;
-                    let frame = frame as usize;
-                    let county = map.county_at(x, y);
-                    if blit_cell(
-                        canvas, assets, zoom, season, bank, frame, sx, sy, clip, tags, county,
-                    ) {
-                        drawn += 1;
-                    }
+            }
+            Some((x, y)) => {
+                let (bank_byte, frame) = overrides
+                    .get(x, y)
+                    .unwrap_or((map.at(Plane::GfxBank, x, y), map.at(Plane::GfxIndex, x, y)));
+                // `Map_ResolvePick` reads the bank as `tile.bank & 0x1c`,
+                // and the mask is not decoration: at run time the same byte
+                // also carries `0x01`, `0x20`, `0x40` and `0x80`, which
+                // `County_FindTownTile` and `FUN_0046ac22` set. Nothing on
+                // disk has them — 0 of 180,224 tiles — so this changed no
+                // pixel, and it is the difference between a renderer that
+                // works on the file and one that works on the game's state.
+                let bank = ((bank_byte & BANK_MASK) >> 2) as usize;
+                let frame = frame as usize;
+                let county = map.county_at(x, y);
+                if blit_cell(
+                    canvas, assets, zoom, season, bank, frame, sx, sy, clip, tags, county,
+                ) {
+                    drawn += 1;
                 }
-                None => {
-                    // **And frame 0, whatever the lattice says, while the fog
-                    // option is on** — the six surround arms of the three row
-                    // walkers, `frame = g_optExploration == 1 ? 0 : cell -
-                    // 0x0FFF0000`. See the heading.
-                    let frame =
-                        if fog.is_some() { 0 } else { lattice.surround(row, col) as usize };
-                    blit_cell(canvas, assets, zoom, season, 0, frame, sx, sy, clip, tags, 0);
-                }
+            }
+            None => {
+                // **And frame 0, whatever the lattice says, while the fog
+                // option is on** — the six surround arms of the three row
+                // walkers, `frame = g_optExploration == 1 ? 0 : cell -
+                // 0x0FFF0000`. See the heading.
+                let frame = if fog.is_some() { 0 } else { lattice.surround(row, col) as usize };
+                blit_cell(canvas, assets, zoom, season, 0, frame, sx, sy, clip, tags, 0);
             }
         }
     }

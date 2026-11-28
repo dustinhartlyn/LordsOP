@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+mod detail;
 mod drawing;
 pub use drawing::*;
 mod helpers;

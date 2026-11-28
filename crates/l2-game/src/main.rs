@@ -149,7 +149,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut canvas = Canvas::screen();
-    if game.prefs.sharp_text {
+    if assets.has_native_art() {
+        canvas.enable_detail();
+    } else if game.prefs.sharp_text {
         canvas.enable_sharp();
     }
     let pictures = assets.cursor_pictures(&platform.vfs);

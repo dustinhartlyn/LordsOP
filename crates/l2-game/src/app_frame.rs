@@ -30,9 +30,17 @@ impl App {
         }
     }
 
-    /// C259: a sharp canvas presents at the window's whole scale; a plain one at 1.
+    /// Standalone fills the 4:3 viewport at the nearest native detail density.
+    /// Classic retains whole-pixel presentation and the optional sharp type.
     pub(super) fn buffer_scale(&self, w: u32, h: u32) -> u32 {
-        if self.canvas.is_sharp() { window::scale(w.max(1), h.max(1)) } else { 1 }
+        if self.canvas.has_detail() {
+            let fit = (w as f32 / CANVAS_W as f32).min(h as f32 / CANVAS_H as f32);
+            fit.round().clamp(1.0, l2_view::detail::SCALE as f32) as u32
+        } else if self.canvas.is_sharp() {
+            window::scale(w.max(1), h.max(1))
+        } else {
+            1
+        }
     }
 
     pub(crate) fn redraw(&mut self) {
@@ -123,6 +131,12 @@ impl App {
     }
 
     pub(super) fn to_canvas(&self, x: f64, y: f64) -> (i32, i32) {
+        if let Some(p) = self.pixels.as_ref().filter(|_| self.canvas.has_detail()) {
+            let (px, py) = p.window_pos_to_pixel((x as f32, y as f32))
+                .unwrap_or_else(|pos| p.clamp_pixel_pos(pos));
+            let k = p.texture().width() as usize / CANVAS_W as usize;
+            return ((px / k) as i32, (py / k) as i32);
+        }
         match self.window.as_ref() {
             Some(w) => {
                 let size = w.inner_size();

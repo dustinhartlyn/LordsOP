@@ -5,7 +5,7 @@ const LIVERY: [u8; 6] = [RED, GOLD, SLATE, VIOLET, BLUE, MOSS];
 
 pub(super) fn asset(name: &str) -> Option<Vec<u8>> {
     let raster = match name {
-        "gateway.pl8" => landscape(640, 480, 0),
+        "gateway.pl8" => super::cover::gateway(),
         "custom.pl8" => setup_board(),
         "skirmish.pl8" => muster(false),
         "skircust.pl8" => muster(true),
@@ -24,7 +24,7 @@ fn grain(a: &mut Art, x: i32, y: i32, w: i32, h: i32, base: u8, seed: u32) {
     for j in y.max(0)..(y + h).min(a.h) {
         for i in x.max(0)..(x + w).min(a.w) {
             let n = noise(i, j * 11, seed);
-            let fleck = match n % 23 { 0 => 2, 1..=5 => 1, _ => 0 };
+            let fleck = u8::from(n % 19 == 0);
             a.dot(i, j, base + fleck);
         }
     }
@@ -650,24 +650,17 @@ fn plate(w: i32, h: i32, face: u8, seed: u32) -> Art {
 fn gateway_tile(i: usize) -> Art {
     use l2_view::chrome::panels::*;
     let mut a = Art::new(CELL, CELL);
-    grain(&mut a, 0, 0, CELL, CELL, INK + 2, i as u32);
+    a.rect(0, 0, CELL, CELL, INK + 1);
     let left = i == CORNER_TL || i == CORNER_BL || (EDGE_LEFT..EDGE_RIGHT).contains(&i);
     let right = i == CORNER_TR || i == CORNER_BR || (EDGE_RIGHT..TEXTURE).contains(&i);
     let top = i == CORNER_TL || i == CORNER_TR || (EDGE_TOP..EDGE_BOTTOM).contains(&i);
     let bottom = i == CORNER_BR || i == CORNER_BL || (EDGE_BOTTOM..EDGE_LEFT).contains(&i);
-    for x in [left.then_some(2), right.then_some(CELL - 3)].into_iter().flatten() {
-        a.line(x - 1, 0, x - 1, 15, WOOD + 2);
-        a.line(x, 0, x, 15, GOLD + 4);
-        a.line(x + 1, 0, x + 1, 15, GOLD + 1);
-        if i % 3 == 1 { diamond(&mut a, x + if left { 4 } else { -4 }, 8, 3, GOLD + 3); }
+    for x in [left.then_some(1), right.then_some(CELL - 2)].into_iter().flatten() {
+        a.line(x, 0, x, CELL - 1, SLATE + 3);
     }
-    for y in [top.then_some(2), bottom.then_some(CELL - 3)].into_iter().flatten() {
-        a.line(0, y - 1, 15, y - 1, WOOD + 3);
-        a.line(0, y, 15, y, GOLD + 5);
-        a.line(0, y + 1, 15, y + 1, GOLD + 1);
-        if i % 3 == 2 { diamond(&mut a, 8, y + if top { 4 } else { -4 }, 3, GOLD + 3); }
+    for y in [top.then_some(1), bottom.then_some(CELL - 2)].into_iter().flatten() {
+        a.line(0, y, CELL - 1, y, SLATE + 3);
     }
-    if i < 4 { jewel(&mut a, 8, 8, 5, RED); }
     a
 }
 
@@ -1118,26 +1111,37 @@ fn battle_column(i: usize) -> Art {
     }
     match i {
         0 => {
-            let mut a = plate(160, 296, WOOD + 1, 87);
-            for x in (8..159).step_by(21) { a.line(x, 5, x, 253, WOOD + 2); }
-            for (x, y) in [(80, 92), (80, 188)] {
-                a.ellipse(x, y, 59, 30, WOOD + 1);
-                a.ellipse(x, y, 56, 28, WOOD + 2);
-                stamp(&mut a, &crest(4, 46, 50, false), x - 23, y - 25);
+            let mut a = Art::new(160, 228);
+            a.rect(0, 0, 160, 228, INK + 1);
+            a.rect(0, 0, 1, 228, SLATE + 3);
+            a.rect(0, 0, 160, 1, SLATE + 3);
+            // Printed heading and a quiet field-mark where nothing is selected.
+            label(&mut a, 24, 84, "BATTLE COMMAND", 1, SLATE + 5);
+            for radius in [14, 30] {
+                let points = [(80, 140 - radius), (80 + radius, 140),
+                    (80, 140 + radius), (80 - radius, 140)];
+                for (a0, a1) in points.iter().zip(points.iter().cycle().skip(1)) {
+                    a.line(a0.0, a0.1, a1.0, a1.1, SLATE + 1);
+                }
             }
+            a.line(75, 140, 85, 140, SLATE + 3);
+            a.line(80, 135, 80, 145, SLATE + 3);
             a
         }
         1 => {
-            let mut a = plate(160, 32, SLATE + 1, 50);
+            let mut a = Art::new(160, 32);
+            a.rect(0, 0, 160, 32, SLATE);
             stamp(&mut a, &battle_control(false, false), 1, 1);
             stamp(&mut a, &battle_control(true, false), 33, 1);
-            label(&mut a, 78, 11, "WAR COUNCIL", 1, GOLD + 5);
+            label(&mut a, 78, 11, "BATTLE", 1, CREAM + 6);
             a
         }
         2 => {
-            let mut a = plate(160, 36, INK + 2, 21);
-            trim(&mut a, 25, 4, 52, 28, GOLD, SLATE + 1, 16);
-            trim(&mut a, 102, 4, 52, 28, GOLD, SLATE + 1, 26);
+            let mut a = Art::new(160, 36);
+            a.rect(0, 0, 160, 36, INK + 1);
+            a.rect(0, 0, 160, 1, SLATE + 3);
+            a.rect(27, 4, 49, 28, SLATE + 1);
+            a.rect(105, 4, 49, 28, SLATE + 1);
             a
         }
         5 => battle_control(false, true),

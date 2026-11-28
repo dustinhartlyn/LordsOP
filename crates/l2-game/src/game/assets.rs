@@ -47,6 +47,7 @@ pub struct Assets {
     maps: Vec<u8>,
     minimap_files: Vec<Option<Vec<u8>>>,
     original: bool,
+    native_art: bool,
 }
 
 impl Assets {
@@ -102,6 +103,9 @@ impl Assets {
             maps,
             minimap_files,
             original,
+            // Graphics mods retain their indexed artwork instead of being
+            // painted over by the standalone relief and illustrations.
+            native_art: original && !vfs.entries().any(|name| name.ends_with(".pl8") || name.ends_with(".256")),
         })
     }
 
@@ -125,6 +129,10 @@ impl Assets {
 
     pub fn is_original(&self) -> bool {
         self.original
+    }
+
+    pub fn has_native_art(&self) -> bool {
+        self.native_art
     }
 
     pub fn cursor_pictures(&self, vfs: &Vfs) -> Vec<l2_formats::cursors::Picture> {
@@ -171,6 +179,7 @@ impl Assets {
             maps: vec![0u8; l2_formats::maps::SLOT_LEN],
             minimap_files: vec![None; 16],
             original: false,
+            native_art: false,
         }
     }
 }

@@ -221,6 +221,13 @@ impl Screen for MapScreen {
                 {
                     // arm: 0x0043292D/minimap-mode-buttons left-press
                     self.minimap_mode_button(ctx, i);
+                } else if let Some(tile) = VILLAGE_SHORTCUT
+                    .contains(x, y)
+                    .then(|| village_shortcut_target(ctx))
+                    .flatten()
+                {
+                    let county = ctx.game.selected;
+                    return self.open_village(ctx, county, tile);
                 } else if SPLIT_SLIDER.contains(x, y)
                     && ctx.game.is_players(ctx.game.selected)
                 {
@@ -436,6 +443,16 @@ impl Screen for MapScreen {
         if phase != self.herd_phase {
             self.herd_phase = phase;
             self.scrolled = true;
+        }
+        if ctx.assets.has_native_art() {
+            self.livestock_tick = self.livestock_tick.wrapping_add(1);
+            // Camera movement may redraw sooner. At rest, update visible
+            // living animals at half the simulation tick rate.
+            if self.livestock_tick & 1 == 0 && self.zoom.id != l2_view::campaign::FAR.id {
+                let active = crate::screens::map::livestock::visible(self, ctx)
+                    .any(|(_, terrain)| (0x14..=0x16).contains(&terrain));
+                self.scrolled |= active;
+            }
         }
         // **And the industry wheels**
         // run off `Tick_Pulses` (`0x004BBC80`), the 20 ms `timeGetTime` divider

@@ -134,6 +134,13 @@ pub(super) fn draw_column_chrome(
     c.draw_misc_bat(canvas, mb::COLUMN, 0x1E0, 0xB8);
     c.draw_misc_bat(canvas, mb::BUTTONS, 0x1E0, 0x1C0);
     c.draw_misc_bat(canvas, mb::COUNTS, 0x1E0, 0x19C);
+    if canvas.has_detail() {
+        canvas.fill_rect(481, 259, 159, 22, 129);
+        canvas.fill_rect(506, 279, 109, 1, 128);
+        p.body_centred(canvas, 481, 260, 159, "BATTLE COMMAND", font::TEXT);
+        canvas.fill_rect(551, 453, 88, 21, 129);
+        p.body_centred(canvas, 551, 455, 88, if paused { "Paused" } else { "In battle" }, font::TEXT);
+    }
     c.draw_misc_bat(canvas, mb::SHIELD + shields.0 as usize, 0x1E2, 0x19D);
     c.draw_misc_bat(canvas, mb::SHIELD + shields.1 as usize, 0x230, 0x19D);
     if paused {
@@ -195,7 +202,7 @@ pub(super) fn draw_banner_plates(
             p.body(canvas, r.x + dx, r.y + 2, &men.to_string(), font::TEXT);
         }
     }
-    true
+    !tiles.is_empty()
 }
 
 /// `Battlefield_DrawBand` (`0x0041298A`): `Ui_DrawRectOutline(…, 0x20)`. [V]

@@ -1,15 +1,27 @@
-//! Original, deterministic indexed-pixel artwork. The legacy container is used
-//! only as a drawing interface: no publisher assets are inputs to these routines.
+//! Original game artwork, worlds and native-resolution illustrations.
+//! Indexed resource fallbacks use the legacy file layouts, not publisher art.
 
+pub(crate) mod art_pack;
 mod battle;
 mod campaign;
+mod cover;
+mod field_detail;
+mod figures_detail;
+mod gateway_detail;
 mod cursors;
 mod shell;
+mod siege_detail;
 mod tableau;
 mod world;
 
 pub(crate) use world::{minimaps, COUNTY_NAMES, MAP_NAMES};
 pub(crate) use cursors::pictures;
+pub(crate) use field_detail::draw_field_detail;
+pub(crate) use figures_detail::{draw_siege_engine, draw_troop};
+pub(crate) use gateway_detail::{
+    draw_gateway, draw_gateway_button, draw_gateway_mark, draw_menu_frame, draw_shield,
+};
+pub(crate) use siege_detail::draw_siege_detail;
 pub(crate) use tableau::tableau;
 
 pub(crate) fn asset(name: &str) -> Option<Vec<u8>> {
@@ -78,6 +90,7 @@ fn palette() -> Vec<u8> {
             }
         }
     }
+    cover::palette(&mut bytes);
     // The classic minimap and sidebar use fixed indices for realm pens.
     for (i, source) in [(1, RED+4), (3, GOLD+3), (4, BLUE+3), (5, VIOLET+4),
         (0xF0, BLUE+7), (0xF1, BLUE+5), (0xF2, GOLD+4), (0xF3, GOLD+6),

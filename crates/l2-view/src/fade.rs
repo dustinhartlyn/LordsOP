@@ -45,7 +45,7 @@ pub fn at(full: &Palette, phase: u8) -> Palette {
     Palette::from_entries(entries)
 }
 
-fn channel_at(v: u8, phase: u8) -> u8 {
+pub(crate) fn channel_at(v: u8, phase: u8) -> u8 {
     let dark = quarter(v);
     if phase <= STEPS {
         v.saturating_sub(STEP.saturating_mul(phase)).max(dark)

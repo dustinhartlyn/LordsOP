@@ -3,6 +3,8 @@ mod units;
 pub use units::*;
 mod ui;
 pub(crate) use ui::*;
+mod sidebar;
+pub(super) use sidebar::{VILLAGE_SHORTCUT, village_shortcut_target};
 
 use super::*;
 

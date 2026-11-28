@@ -343,7 +343,29 @@ impl Screen for BattlefieldScreen {
                 let (side4, side0) = side_colours(ctx.game, live);
                 art.set_sides(side4, side0);
                 let cam = l2_view::scene::Camera::clamped(live.cam.0, live.cam.1);
-                l2_view::scene::draw(canvas, &live.runner, art, self.ground, cam, banner);
+                use l2_view::scene;
+                if canvas.has_detail() {
+                    if self.ground == scene::Ground::Field {
+                        let ground = art.ground(self.ground);
+                        scene::draw_terrain(canvas, &live.runner.field, &ground.tiles, ground.tiles2.as_ref(), cam);
+                        crate::original::draw_field_detail(canvas, &live.runner.field, cam);
+                    } else {
+                        crate::original::draw_siege_detail(canvas, &live.runner.field, cam, self.ground);
+                    }
+                    scene::draw_figures_with(canvas, &live.runner, art, cam, |canvas, figure, i, at| {
+                        let team = if figure.side == l2_sim::SIDE_B { side4 } else { side0 };
+                        let pose = l2_view::figures::pose_of(&live.runner, i);
+                        if figure.troop.is_siege() {
+                            crate::original::draw_siege_engine(canvas, figure, team, pose, at);
+                        } else {
+                            crate::original::draw_troop(canvas, figure, team, pose, at);
+                        }
+                        true
+                    });
+                    scene::draw_overlay_and_missiles(canvas, &live.runner, art, cam, banner);
+                } else {
+                    scene::draw(canvas, &live.runner, art, self.ground, cam, banner);
+                }
             }
             None => draw_placeholder_field(canvas, live, ink),
         }
@@ -372,6 +394,14 @@ impl Screen for BattlefieldScreen {
         }
 
         draw_overview(canvas, &self.overview, live, ink, have_sheets);
+        if canvas.has_detail() {
+            let cam = l2_view::scene::Camera::clamped(live.cam.0, live.cam.1);
+            let s = l2_view::scene::OVERVIEW_SCALE;
+            let (x, y) = (OVERVIEW.x + cam.x as i32 * s, OVERVIEW.y + cam.y as i32 * s);
+            let (w, h) = (VIEW_COLS * s, VIEW_ROWS * s);
+            p.outline(canvas, x, y, w, h, 128);
+            p.outline(canvas, x + 1, y + 1, w - 2, h - 2, 127);
+        }
         let art_column = draw_column_chrome(
             canvas,
             &p,
@@ -380,7 +410,14 @@ impl Screen for BattlefieldScreen {
             side_men(live),
             live.paused,
         );
-        draw_banner_plates(canvas, &p, ctx.assets.chrome.as_ref(), live, ink);
+        let have_selected = draw_banner_plates(canvas, &p, ctx.assets.chrome.as_ref(), live, ink);
+        if canvas.has_detail() && art_column && !have_selected {
+            canvas.fill_rect(484, 296, 152, 107, 129);
+            p.body_centred(canvas, 484, 311, 152, "No troops selected", font::TEXT);
+            p.body_centred(canvas, 484, 334, 152, "Drag on the field to", font::TEXT);
+            p.body_centred(canvas, 484, 349, 152, "select a formation.", font::TEXT);
+            p.body_centred(canvas, 484, 381, 152, "Click the map to look.", font::TEXT);
+        }
         if !art_column {
             for b in Button::ALL {
                 let r = b.rect();
@@ -394,7 +431,7 @@ impl Screen for BattlefieldScreen {
             }
         }
 
-        if live.paused && live.mode != Mode::Outcome {
+        if live.paused && live.mode != Mode::Outcome && !(canvas.has_detail() && art_column) {
             // `FUN_00423B4F`: group 32 index 0 in the heading font at
             // (0x10E, 0x1AE), with system frame 0x4D beside it at (400, 0x1C4).
             let s = ctx.assets.shell.text(GROUP_PAUSED, 0).to_string();

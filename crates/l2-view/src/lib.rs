@@ -2,6 +2,7 @@
 pub mod campaign;
 pub mod canvas;
 pub mod chrome;
+pub mod detail;
 pub mod drawbow;
 pub mod engines;
 pub mod fade;

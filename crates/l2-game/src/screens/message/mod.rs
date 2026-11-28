@@ -27,6 +27,10 @@
 //!   [`crate::screens::movie`] draws the taller window and plays the film in
 //!   it. With animations off the ordinary window below is the whole of it.
 
+mod copy;
+pub use copy::body;
+pub(crate) use copy::body_text as message_body;
+pub(crate) use copy::title as message_title;
 mod help;
 use help::draw_help;
 mod render;
@@ -38,7 +42,6 @@ use crate::input::{Event, Rect};
 use crate::press::{Press, Widget};
 use crate::message::{self, Prompt, Record, Shape};
 use crate::screen::{Ctx, Screen, ScreenId, Transition};
-use crate::shell::{font, Pen};
 
 /// `FUN_004093E0(…, …, …, …)`'s border set. Every one of `Msg_DrawWindow`'s
 /// arms passes the four-argument form, which is border set 1.
@@ -154,10 +157,7 @@ impl Screen for MessageScreen {
     }
 
     fn title(&self, ctx: &Ctx) -> String {
-        match MessageScreen::record(ctx) {
-            Some(r) => format!("Message {} — category {:#04x}", r.group, r.category),
-            None => "Message".into(),
-        }
+        MessageScreen::record(ctx).map_or_else(|| "Campaign notices".into(), |r| message_title(ctx, &r).to_owned())
     }
 
     fn is_overlay(&self) -> bool {
@@ -176,8 +176,7 @@ impl Screen for MessageScreen {
                         return answer(ctx, prompt, i == 0);
                     }
                 }
-                let shape = record.shape();
-                if shape.has_ok_button() {
+                if has_ok_button(ctx, &record) {
                     if let Some(frame) = window_frame(ctx, &record) {
                         if frame.ok_hitbox().contains(x, y) {
                             // `FUN_004B18E3()` consumes the click so the screen
@@ -240,26 +239,16 @@ impl Screen for MessageScreen {
 
     fn draw(&mut self, ctx: &Ctx, canvas: &mut Canvas) {
         let Some(record) = MessageScreen::record(ctx) else { return };
-        let pen = Pen {
-            assets: &ctx.assets.shell,
-            ink: &ctx.assets.ink,
-            chrome: ctx.assets.chrome.as_ref(),
-            shadow: Some(font::SHADOW),
-            caps: None,
-        };
+        let pen = message_pen(ctx);
         if let Shape::Paragraphs(n) = record.shape() {
             draw_paragraphs(&pen, ctx, canvas, &record, n);
             return;
         }
-        let Some(frame) = message::frame_of(&record) else {
-            // A category with no geometry of its own — the tip, or one
-            // `Msg_DrawWindow` has no arm for. The tip is the only one of them
-            // anything enqueues; the help window's four numbers now come out of
-            // `g_helpWindowGeom` (`0x004D6EB8`) above.
+        let Some(frame) = window_frame(ctx, &record) else {
             draw_tip(&pen, ctx, canvas, &record, self.pointer);
             return;
         };
-        pen.window(canvas, frame.x, frame.y, frame.w / 16, frame.h / 16, BOX_SET);
+        draw_surface(&pen, ctx, canvas, frame, &record);
 
         match record.shape() {
             Shape::Letter | Shape::Prompt => draw_letter(&pen, ctx, canvas, &record, frame),
@@ -276,11 +265,10 @@ impl Screen for MessageScreen {
         }
 
         if let Some(prompt) = record.answer_widgets() {
-            draw_prompt(&pen, canvas, prompt, &self.press);
+            draw_prompt(&pen, ctx, canvas, prompt, &self.press);
         }
-        if record.shape().has_ok_button() {
-            let (x, y) = frame.ok_button();
-            pen.ok_button(canvas, x, y, 0);
+        if has_ok_button(ctx, &record) {
+            draw_ok(&pen, ctx, canvas, frame);
         }
     }
 }

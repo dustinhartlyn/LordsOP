@@ -2,9 +2,8 @@
 
 **Open Lords II** is a standalone medieval strategy game inspired by **Lords of
 the Realm II** (Sierra/Impressions, 1996). No stock installation is needed.
-The executable makes its own artwork, fonts, maps and battlefield layouts
-from source in [`crates/l2-game/src/original`](crates/l2-game/src/original).
-No publisher assets are distributed; see [NOTICE](NOTICE).
+The executable includes original artwork, maps and battlefield layouts, plus
+scalable interface fonts. No publisher assets are distributed; see [NOTICE](NOTICE).
 
 ## What works
 
@@ -51,6 +50,27 @@ cargo run --release -p l2-game
 
 Pass `-- --mods <dir>` to enable mods. Standalone games use `open-lords2/standalone/saves`
 under the platform's data directory.
+
+Standalone uses an original ray-traced castle title, illustrated heraldry, and
+full-color campaign and battle art at up to 1920×1440. Seasonal ground,
+pasture walls, fields, ridge faces and siege-yard approaches are drawn from
+the map. The campaign renderer retains world-space scenery while scrolling.
+Cattle walk and graze independently within their pastures. These graphics
+don't change movement rules.
+The title's POV-Ray scene and regeneration script are in
+[`crates/l2-game/src/original/art`](crates/l2-game/src/original/art).
+It fits the available window at 4:3 without changing the logical control
+layout. Classic mode and indexed artwork/palette mods retain their original
+rendering.
+
+In standalone mode, the campaign dashboard shows the selected county's
+population, food, tax, and workforce alongside the minimap and county actions.
+Open **Village** there to inspect job sites. To move workers in your own
+county, drag a box around the groups on one job card, release, then click
+the destination card. Right-click to cancel a held selection.
+
+Proposed strategy changes and playtest goals are tracked in the
+[standalone mechanics backlog](docs/standalone-mechanics.md).
 
 **Optional classic mode:** pass a Lords of the Realm II install directory after `--`,
 or set `LORDS2_DIR`, to use your own stock artwork, music, narration and films.

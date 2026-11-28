@@ -21,8 +21,16 @@ pub(crate) fn draw_units(screen: &MapScreen, canvas: &mut Canvas, ctx: &Ctx, cli
         let debug = ctx.game.prefs.debug_overlay;
         let sprite = unit_sprite(&screen.zoom, ctx.game, id, unit);
         let tile = (unit.x as usize, unit.y as usize);
-        let drawn = !unit.is_garrisoned()
-            && campaign::draw_unit(canvas, &ctx.assets.map, screen.view, &screen.zoom, tile, sprite, clip);
+        let drawn = if unit.is_garrisoned() {
+            false
+        } else if canvas.has_detail() && screen.zoom.set == 0 && unit.kind == l2_kingdom::UnitKind::Merchant {
+            let (ax, ay) = campaign::unit_anchor(screen.view, &screen.zoom, tile);
+            let centre = (ax + sprite.walk.0 + sprite.nudge.0, ay + sprite.walk.1 + sprite.nudge.1);
+            super::detail::cart(canvas, centre, unit.facing >= 5, clip);
+            true
+        } else {
+            campaign::draw_unit(canvas, &ctx.assets.map, screen.view, &screen.zoom, tile, sprite, clip)
+        };
         // `Map_DrawArmies` (`0x00408438`): the banner follows the figure's blit.
         let banner = match unit.kind {
             l2_kingdom::UnitKind::Army => campaign::flag_frame(unit.shield, screen.flag_phase)
@@ -82,6 +90,14 @@ pub(crate) fn draw_flags(screen: &MapScreen, canvas: &mut Canvas, ctx: &Ctx, cli
     let phase = screen.flag_phase;
     fn flag(screen: &MapScreen, canvas: &mut Canvas, ctx: &Ctx, clip: Clip, tile: usize, frame: usize) {
         let (x, y) = l2_kingdom::map::coords(tile);
+        if canvas.has_detail() && screen.zoom.set == 0 {
+            let (row, col) = campaign::tile_to_cell(x as usize, y as usize);
+            let (sx, sy) = campaign::cell_to_screen(screen.view, &screen.zoom, row, col);
+            let (dx, dy) = screen.zoom.flag_at;
+            if super::detail::flag(canvas, (sx + dx - 2, sy + dy), frame, clip) {
+                return;
+            }
+        }
         campaign::draw_flag(
             canvas,
             &ctx.assets.map,
@@ -198,6 +214,15 @@ pub(crate) fn in_view(screen: &MapScreen, tile: usize) -> bool {
 /// **`FUN_004071A0`'s farm arm — the cattle in the pastures.**
 pub(crate) fn draw_herds(screen: &MapScreen, canvas: &mut Canvas, ctx: &Ctx, clip: Clip) {
     let map = &ctx.game.kingdom.campaign.map;
+    if canvas.has_detail() {
+        if screen.zoom.id == campaign::FAR.id { return; }
+        for (tile, terrain) in crate::screens::map::livestock::visible(screen, ctx) {
+            crate::screens::map::livestock::draw(
+                canvas, screen.view, &screen.zoom, tile, terrain, screen.livestock_tick, clip,
+            );
+        }
+        return;
+    }
     for tile in 0..map.terrain.len() {
         if map.flags[tile] & l2_kingdom::map::flags::FARMLAND == 0 {
             continue;

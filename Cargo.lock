@@ -812,6 +812,7 @@ dependencies = [
 name = "l2-game"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "cpal",
  "l2-formats",
  "l2-kingdom",
@@ -824,6 +825,7 @@ dependencies = [
  "l2-testkit",
  "l2-view",
  "pixels",
+ "tiny-skia",
  "windows-sys 0.52.0",
  "winit",
 ]

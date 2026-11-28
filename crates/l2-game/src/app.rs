@@ -102,6 +102,9 @@ impl super::App {
     // C259, `[D]` ours: F9 swaps the body face for the sharp one and back.
     // arm: ours/sharp-text-toggle key
     pub(super) fn toggle_sharp_text(&mut self) {
+        if self.canvas.has_detail() {
+            return; // Standalone already draws text at the native art density.
+        }
         self.game.prefs.sharp_text = !self.game.prefs.sharp_text;
         if self.game.prefs.sharp_text {
             self.canvas.enable_sharp();

@@ -152,6 +152,11 @@ impl Machine {
     // arm: 0x00476AA7/tip-screen-ladder frame
     pub(super) fn run_tips(&mut self, ctx: &mut Ctx) {
         self.seat_tip_host(ctx.game);
+        // The standalone planner puts the worker controls next to their
+        // instructions; its arrival should not be blocked by the old town tip.
+        if ctx.assets.is_original() && matches!(self.top_screen_id(), Some(ScreenId::Village(_))) {
+            return;
+        }
         let view = crate::tip::View::of(self, ctx.game);
         if crate::tip::tick(ctx.game, &view).is_some() {
             self.seat_tip_host(ctx.game);

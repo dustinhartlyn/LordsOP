@@ -47,7 +47,10 @@ impl ApplicationHandler for App {
         let builder = builder.wgpu_backend(
             pixels::wgpu::Backends::from_env().unwrap_or(pixels::wgpu::Backends::DX12),
         );
-        let pixels = builder.build().expect("create pixels");
+        let mut pixels = builder.build().expect("create pixels");
+        if self.canvas.has_detail() {
+            pixels.set_scaling_mode(pixels::ScalingMode::Fill);
+        }
         self.window = Some(window);
         self.pixels = Some(pixels);
         self.build_cursors(event_loop);

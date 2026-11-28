@@ -25,10 +25,11 @@
 //! end-of-season phase runs (network games only: `tick_gate::season_skips_film`),
 //! and `Net_LeaveGame`, which `docs/arms.json` records as missing.
 
-use l2_view::canvas::shade_table;
 use l2_view::Canvas;
 
+use super::message::{county_name, draw_ok, draw_surface, lord_name, message_body, message_pen, message_title};
 use crate::input::Event;
+use crate::message::Frame;
 use crate::movie::{self, Film, Player, Step};
 use crate::screen::{Ctx, Screen, ScreenId, Transition};
 use crate::shell::{self, font, Pen};
@@ -39,9 +40,6 @@ const GROUP_LANGUAGE: usize = 300;
 const GROUP_SUBTITLES: usize = 301;
 const SUBTITLE_Y: [i32; 2] = [400, 0x1A0];
 const SUBTITLE_COLOUR: u8 = 0xF5;
-
-/// `FUN_004093E0`'s border set for every window drawn here.
-const BOX_SET: usize = 1;
 
 enum State {
     Unopened,
@@ -132,8 +130,12 @@ impl Screen for MovieScreen {
         ScreenId::Movie(self.film)
     }
 
-    fn title(&self, _ctx: &Ctx) -> String {
-        self.film.title().to_string()
+    fn title(&self, ctx: &Ctx) -> String {
+        match self.film {
+            Film::Capture { record, .. } | Film::Ending { record, .. } => message_title(ctx, &record),
+            _ => self.film.title(),
+        }
+        .to_owned()
     }
 
     fn is_overlay(&self) -> bool {
@@ -198,13 +200,7 @@ impl Screen for MovieScreen {
             // `FUN_004B11CE` → `FUN_004B1867`: the back buffer cleared.
             canvas.clear(0);
         }
-        let pen = Pen {
-            assets: &ctx.assets.shell,
-            ink: &ctx.assets.ink,
-            chrome: ctx.assets.chrome.as_ref(),
-            shadow: Some(font::SHADOW),
-            caps: None,
-        };
+        let pen = message_pen(ctx);
         match self.film {
             Film::Capture { record, .. } => draw_capture_window(&pen, ctx, canvas, &record),
             Film::Ending { record, .. } => draw_ending_window(&pen, ctx, canvas, &record),
@@ -242,14 +238,19 @@ impl Screen for MovieScreen {
 /// The dimming reads the campaign palette, which is the one on screen when a
 /// capture is announced; `[I]` for a capture announced over anything else.
 fn draw_capture_window(pen: &Pen, ctx: &Ctx, canvas: &mut Canvas, record: &crate::message::Record) {
-    canvas.remap(&shade_table(&ctx.assets.palette));
-    pen.window(canvas, 0x10, 0x30, 0x1C, 0x17, BOX_SET);
+    canvas.shade(&ctx.assets.palette);
+    let f = Frame { x: 0x10, y: 0x30, w: 0x1C0, h: 0x170 };
+    draw_surface(pen, ctx, canvas, f, record);
     shell::inset_rect(canvas, 0x27, 0x68, 0x192, 0xC2);
-    pen.ok_button(canvas, 0x1A0, 0x170, 0);
-    let county = super::message::county_name(ctx, record.county);
-    pen.heading_centred(canvas, 0x10, 0x46, 0x1C0, &county, font::TEXT);
-    let body = ctx.assets.shell.text(record.group as usize, 1).to_string();
-    pen.body_wrapped(canvas, 0x30, 0x142, 0x180, &body, font::TEXT);
+    draw_ok(pen, ctx, canvas, f);
+    let county = county_name(ctx, record.county);
+    let heading = if ctx.assets.is_original() {
+        format!("{}: {county}", message_title(ctx, record))
+    } else {
+        county
+    };
+    pen.heading_centred(canvas, 0x10, 0x46, 0x1C0, &heading, font::TEXT);
+    pen.body_wrapped(canvas, 0x30, 0x142, 0x180, message_body(ctx, record), font::TEXT);
 }
 
 /// ```c
@@ -262,13 +263,13 @@ fn draw_capture_window(pen: &Pen, ctx: &Ctx, canvas: &mut Canvas, record: &crate
 /// FUN_0040328E(group, variant + 1, 0x30, 0x152, 0x180, 400, 0, 0, body);
 /// ```
 fn draw_ending_window(pen: &Pen, ctx: &Ctx, canvas: &mut Canvas, record: &crate::message::Record) {
-    canvas.remap(&shade_table(&ctx.assets.palette));
-    pen.window(canvas, 0x10, 0x30, 0x1C, 0x18, BOX_SET);
+    canvas.shade(&ctx.assets.palette);
+    let f = Frame { x: 0x10, y: 0x30, w: 0x1C0, h: 0x180 };
+    draw_surface(pen, ctx, canvas, f, record);
     shell::inset_rect(canvas, 0x58, 0x68, 0x12A, 0xBA);
-    pen.ok_button(canvas, 0x1A0, 0x180, 0);
+    draw_ok(pen, ctx, canvas, f);
     let who = if record.group == l2_kingdom::victory::MSG_VICTORY { ctx.game.player } else { record.from };
-    pen.heading_centred(canvas, 0x10, 0x46, 0x1C0, &super::message::lord_name(ctx, who), font::TEXT);
-    pen.heading_centred(canvas, 0x10, 0x132, 0x1C0, &super::message::label(ctx, record.group), font::TEXT);
-    let body = ctx.assets.shell.text(record.group as usize, record.body_index()).to_string();
-    pen.body_wrapped(canvas, 0x30, 0x152, 0x180, &body, font::TEXT);
+    pen.heading_centred(canvas, 0x10, 0x46, 0x1C0, &lord_name(ctx, who), font::TEXT);
+    pen.heading_centred(canvas, 0x10, 0x132, 0x1C0, message_title(ctx, record), font::TEXT);
+    pen.body_wrapped(canvas, 0x30, 0x152, 0x180, message_body(ctx, record), font::TEXT);
 }

@@ -22,7 +22,7 @@ impl<'a> Pen<'a> {
         Pen { caps: Some(1), ..*self }
     }
 
-    fn style(&self, colour: u8) -> font::Style {
+    pub(super) fn style(&self, colour: u8) -> font::Style {
         if self.assets.original {
             let colour = match colour {
                 font::TEXT => 0xFF,
@@ -56,6 +56,9 @@ impl<'a> Pen<'a> {
     /// `docs/decisions.md` C61.
     pub fn body(&self, canvas: &mut Canvas, x: i32, y: i32, s: &str, colour: u8) -> i32 {
         l2_net::trace_do!(l2_net::trace_draw::text(if self.assets.body.is_some() { "body" } else { "5x7" }, s, x, y););
+        if let Some(w) = self.outline_text(Face::Body, canvas, x, y, s, colour, None) {
+            return x + w + TRAILING;
+        }
         match &self.assets.body {
             Some(f) => x + f.draw(canvas, x, y, s, &self.style(colour)) + TRAILING,
             None => l2_view::text::draw(canvas, x, y, s, self.fallback(colour)) + TRAILING,
@@ -64,6 +67,9 @@ impl<'a> Pen<'a> {
 
     pub fn heading(&self, canvas: &mut Canvas, x: i32, y: i32, s: &str, colour: u8) -> i32 {
         l2_net::trace_do!(l2_net::trace_draw::text(if self.assets.heading.is_some() { "heading" } else { "5x7" }, s, x, y););
+        if let Some(w) = self.outline_text(Face::Heading, canvas, x, y, s, colour, None) {
+            return x + w + TRAILING;
+        }
         match &self.assets.heading {
             Some(f) => x + f.draw(canvas, x, y, s, &self.style(colour)) + TRAILING,
             None => l2_view::text::draw(canvas, x, y, s, self.fallback(colour)) + TRAILING,
@@ -79,6 +85,9 @@ impl<'a> Pen<'a> {
         s: &str,
         colour: u8,
     ) -> i32 {
+        if let Some(w) = self.outline_text(Face::Body, canvas, x, y, s, colour, Some(width)) {
+            return x + w;
+        }
         l2_net::trace_leaf!("text", 0x004025D7, "Ui_DrawTextCentredIn", s = s, x = x, y = y, width = width; match &self.assets.body {
             Some(f) => f.draw_centred(canvas, x, y, width, s, &self.style(colour)),
             None => {
@@ -98,6 +107,9 @@ impl<'a> Pen<'a> {
         s: &str,
         colour: u8,
     ) -> i32 {
+        if let Some(w) = self.outline_text(Face::Heading, canvas, x, y, s, colour, Some(width)) {
+            return x + w;
+        }
         l2_net::trace_leaf!("text", 0x004025D7, "Ui_DrawTextCentredIn", s = s, x = x, y = y, width = width; match &self.assets.heading {
             Some(f) => f.draw_centred(canvas, x, y, width, s, &self.style(colour)),
             None => {
@@ -250,6 +262,11 @@ impl<'a> Pen<'a> {
         colour: u8,
     ) -> i32 {
         l2_net::trace_do!(if face == Face::Eight { l2_net::trace_draw::text(if self.assets.eight.is_some() { "eight" } else { "5x7" }, s, x, y) });
+        if face == Face::Eight {
+            if let Some(w) = self.outline_text(face, canvas, x, y, s, colour, None) {
+                return x + w + TRAILING;
+            }
+        }
         match face {
             Face::Body => self.body(canvas, x, y, s, colour),
             Face::Heading => self.heading(canvas, x, y, s, colour),

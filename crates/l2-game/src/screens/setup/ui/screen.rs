@@ -209,8 +209,8 @@ impl SetupScreen {
             assets: a,
             ink: &ctx.assets.ink,
             chrome: ctx.assets.chrome.as_ref(),
-            shadow: Some(font::SHADOW_GATEWAY),
-            caps: Some(1),
+            shadow: (!ctx.assets.is_original()).then_some(font::SHADOW_GATEWAY),
+            caps: (!ctx.assets.is_original()).then_some(1),
         };
         let pen = head.flat();
         let base = if self.page == SetupPage::Dropdown { self.under } else { self.page };
@@ -218,7 +218,10 @@ impl SetupScreen {
         // `skirmish.256` either way, and `DAT_0056899C` picks between
         // `skirmish.pl8` and `skircust.pl8`. The palette does not change.
         let background = base.background_custom(self.skirmish.custom);
-        if !shell::background(canvas, a, background) {
+        if ctx.assets.has_native_art() && canvas.has_detail() && background == "Gateway.pl8" {
+            canvas.clear(ctx.assets.ink.background);
+            crate::original::draw_gateway(canvas);
+        } else if !shell::background(canvas, a, background) {
             canvas.clear(ctx.assets.ink.background);
             let line =
                 format!("SETUP PAGE {} - NO {}", base.number(), background.to_uppercase());

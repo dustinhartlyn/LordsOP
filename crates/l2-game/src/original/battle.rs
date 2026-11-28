@@ -153,8 +153,7 @@ fn edge_distance(x: i32, y: i32) -> [i32; 4] {
     [y, 31 - x, 31 - y, x]
 }
 
-fn water_tile(i: usize) -> Art {
-    let mut a = meadow(i);
+pub(super) fn water_edges(i: usize) -> (u8, u8) {
     let missing = match i {
         0xa8..=0xab => N,
         0xac..=0xad | 0xc7 => N | E,
@@ -197,6 +196,12 @@ fn water_tile(i: usize) -> Art {
         0xe5 => 15,
         _ => 0,
     };
+    (missing, notches)
+}
+
+fn water_tile(i: usize) -> Art {
+    let mut a = meadow(i);
+    let (missing, notches) = water_edges(i);
     for y in 0..32 {
         for x in 0..32 {
             let n = noise(x, y, i as u32);
@@ -306,7 +311,7 @@ fn hill_tile(i: usize) -> Art {
     a
 }
 
-fn road_mask(i: usize) -> u8 {
+pub(super) fn road_mask(i: usize) -> u8 {
     match i {
         0 | 1 => N | S,
         2 | 3 => E | W,
@@ -340,18 +345,23 @@ fn plank(a: &mut Art, x: i32, y: i32, w: i32, h: i32, salt: u32) {
     }
 }
 
-fn bridge_tile(i: usize) -> Art {
+pub(super) fn bridge_layout(i: usize) -> (usize, i32, i32) {
     let col = (i - 0x8c) % 4;
     let water = match i {
         0x8c..=0x8f => 0xa8,
         0x9c..=0x9e => 0xb4,
         _ => 0xa0,
     };
-    let mut a = water_tile(water);
     let (left, right) = match col { 0 => (19, 32), 3 => (0, 13), _ => (0, 32) };
+    (water, left, right)
+}
+
+fn bridge_tile(i: usize) -> Art {
+    let (water, left, right) = bridge_layout(i);
+    let mut a = water_tile(water);
     plank(&mut a, left - 1, 0, right - left + 2, 32, i as u32);
-    if col == 0 || col == 3 {
-        let x = if col == 0 { left } else { right };
+    if left != 0 || right != 32 {
+        let x = if left != 0 { left } else { right };
         a.rect(x - 3, 0, 6, 32, WOOD + 1);
         a.rect(x - 2, 0, 3, 32, WOOD + 6);
         for y in [4, 21] {
@@ -1300,273 +1310,137 @@ fn village_grid() -> Art {
     a
 }
 
-fn cottage(a: &mut Art, x: i32, y: i32, w: i32, h: i32, roof: u8, salt: u32) {
-    let lift = h * 2 / 3;
-    let half = w / 2;
-    a.ellipse(x + 4, y - 1, half + 6, 5 + h / 7, MOSS + 1);
-    a.poly(&[(x-half,y-h),(x+w/6,y-h-3),(x+half,y-h-8),(x+half,y-5),(x+w/6,y),(x-half,y-1)], WOOD + 1);
-    a.poly(&[(x-half+1,y-h),(x+w/6-1,y-h),(x+w/6-1,y-1),(x-half+1,y-2)], PARCHMENT + 5);
-    a.poly(&[(x+w/6,y-h),(x+half-1,y-h-7),(x+half-1,y-6),(x+w/6,y-1)], PARCHMENT + 3);
-    for k in [x-half+1, x-3, x+w/6-1] {
-        a.line(k, y - h + 1, k, y - 2, WOOD + 2);
-    }
-    a.line(x-half+2, y-h+2, x-4, y-3, WOOD + 3);
-    a.rect(x - 1, y - h / 2, (w / 8).max(3), h / 2 - 1, WOOD + 1);
-    a.line(x, y - h / 2 + 1, x, y - 2, WOOD + 4);
-    let window = (x + w / 3, y - h / 2 - 3);
-    a.rect(window.0 - 2, window.1 - 2, 5, 6, WOOD + 1);
-    a.rect(window.0 - 1, window.1 - 1, 3, 3, GOLD + 5);
-    a.dot(window.0, window.1, PARCHMENT + 7);
-    a.line(window.0 + 1, window.1 - 1, window.0 + 1, window.1 + 2, WOOD + 2);
-    let top = y - h - lift;
-    let eave = y - h + 1;
-    a.poly(&[(x-half-3,eave),(x-w/5,top),(x+half/2,top-5),(x+half+4,eave-7),(x+w/6,eave+1)], roof + 1);
-    a.poly(&[(x-half-2,eave-2),(x-w/5,top+1),(x+half/2,top-4),(x+w/6,eave-1)], roof + 4);
-    a.line(x-w/5, top+1, x+half/2, top-4, roof + 6);
-    for row in 1..lift.max(2) {
-        let lx = x - w / 5 - row * (half - w / 5 + 1) / lift.max(1);
-        let rx = x - w / 5 + row * (w / 5 + w / 6) / lift.max(1);
-        if row % 3 == 0 {
-            a.line(lx, top + row, rx, top + row - 2, roof + 2);
-        }
-        let shift = (noise(x, row, salt) % 3) as i32;
-        a.dot(lx + shift, top + row, roof + 6);
-    }
-    let chimney = x + half / 3;
-    a.rect(chimney - 2, top - 8, 5, 11, STONE + 3);
-    a.line(chimney - 2, top - 8, chimney - 2, top + 2, STONE + 6);
-    a.rect(chimney - 3, top - 8, 7, 2, STONE + 2);
+fn cottage(a: &mut Art, x: i32, y: i32, w: i32, h: i32, roof: u8) {
+    let (left, right) = (x - w / 2, x + w / 2);
+    let side = x + w / 6;
+    let eave = y - h;
+    let peak = eave - w / 3;
+    a.ellipse(x + 3, y, w / 2 + 5, h / 3, PINE + 3);
+    a.poly(&[(left, eave), (side, eave), (side, y), (left, y - 2)], CREAM + 5);
+    a.poly(&[(side, eave), (right, eave - 6), (right, y - 6), (side, y)], STONE + 5);
+    a.poly(&[(left - 2, eave), (x - w / 6, peak), (side + 1, eave)], roof + 5);
+    a.poly(&[(x - w / 6, peak), (right - w / 4, peak - 6), (right + 3, eave - 6), (side + 1, eave)], roof + 3);
+    a.line(x - w / 6, peak, right - w / 4, peak - 6, roof + 6);
+    a.line(left - 2, eave, side + 1, eave, roof + 1);
+    a.rect(x - 4, y - h / 2, 4, h / 2, WOOD + 2);
+    a.rect(side + 3, eave + 2, 3, 3, INK + 3);
+    a.dot(side + 4, eave + 3, GOLD + 6);
 }
 
-fn wheat_field(a: &mut Art, x: i32, y: i32, w: i32, h: i32, ripened: bool) {
-    let tint = if ripened { PARCHMENT } else { MOSS };
-    a.poly(&[(x-5,y+2),(x+w-9,y-4),(x+w+2,y+h-2),(x+7,y+h+5)], WOOD + 2);
-    a.poly(&[(x-3,y+3),(x+w-10,y-3),(x+w,y+h-2),(x+9,y+h+3)], tint + 3);
-    for row in (4..h-1).step_by(4) {
-        let x1 = x + (row * 11 / h) - 1;
-        let x2 = x + w - 13 + row * 11 / h;
-        a.line(x1, y + row, x2, y + row - 5, WOOD + 3);
-        for xx in (x1..x2).step_by(4) {
-            let yy = y + row - (xx - x1) * 5 / (x2 - x1);
-            a.line(xx, yy, xx - 1, yy - 2, tint + 5);
-            a.dot(xx + 1, yy - 2, tint + 7);
-        }
+fn atlas_plots(a: &mut Art, x: i32, y: i32, w: i32, h: i32, tint: u8) {
+    a.poly(&[(x, y), (x + w - 15, y - 8), (x + w, y + h - 9), (x + 14, y + h)], tint + 2);
+    for row in (3..h - 2).step_by(5) {
+        let start = x + row * 14 / h + 2;
+        a.line(start, y + row - 1, start + w - 20, y + row - 9, tint + 4);
+        a.line(start, y + row, start + w - 18, y + row - 8, tint + 6);
     }
 }
 
 fn fence(a: &mut Art, start: Point, end: Point) {
     let (x, y) = start;
     let (u, v) = end;
-    a.line(x, y, u, v, WOOD + 1);
-    a.line(x, y - 3, u, v - 3, WOOD + 4);
-    a.line(x, y - 4, u, v - 4, WOOD + 6);
-    let length = (u - x).abs().max((v - y).abs());
-    for i in (0..=length).step_by(8) {
-        let (px, py) = (x + (u - x) * i / length.max(1), y + (v - y) * i / length.max(1));
-        a.line(px, py - 6, px, py + 1, WOOD + 2);
-        a.line(px - 1, py - 6, px - 1, py - 1, WOOD + 5);
+    a.line(x, y - 2, u, v - 2, WOOD + 6);
+    let length = (u - x).abs().max((v - y).abs()).max(1);
+    for i in (0..=length).step_by(9) {
+        let (px, py) = (x + (u - x) * i / length, y + (v - y) * i / length);
+        a.line(px, py - 4, px, py + 1, WOOD + 3);
     }
 }
 
-fn animal(a: &mut Art, x: i32, y: i32, sheep: bool, right: bool) {
-    let s = if right { 1 } else { -1 };
-    let c = if sheep { CREAM } else { WOOD };
-    let r = if sheep { 5 } else { 7 };
-    a.ellipse(x + 1, y + 1, r + 2, 3, MOSS + 1);
-    for k in [-r + 2, -r + 4, r - 4, r - 2] {
-        a.line(x + k, y - 4, x + k, y, WOOD + 1);
-    }
-    a.ellipse(x, y - 5, r, 4, c + 2);
-    a.ellipse(x - 1, y - 6, r - 1, 3, c + 5);
-    a.ellipse(x + s * r, y - 5, 3, 3, if sheep { SLATE + 3 } else { WOOD + 5 });
-    a.dot(x + s * (r+1), y - 6, INK + 1);
-    if !sheep {
-        a.line(x + s * r, y - 8, x + s * (r+2), y - 10, PARCHMENT + 6);
-        a.ellipse(x - 3, y - 5, 3, 2, CREAM + 4);
-        a.line(x - s * r, y - 6, x - s * (r+2), y - 2, WOOD + 2);
+fn atlas_grove(a: &mut Art, trees: &[(i32, i32, i32)]) {
+    for &(x, y, r) in trees {
+        a.ellipse(x + 2, y, r, r / 3, PINE + 2);
+        a.rect(x, y - r, 1, r + 1, WOOD + 3);
+        a.ellipse(x, y - r + 1, r / 2 + 1, r, PINE + 4);
+        a.ellipse(x - r / 5, y - r - 1, r / 3 + 1, r * 2 / 3, PINE + 6);
     }
 }
 
-fn village_frame(a: &mut Art) {
-    let (w, h) = (a.w, a.h);
-    for (offset, c) in [(0, INK + 1), (1, WOOD + 2), (2, GOLD + 5), (3, WOOD + 3), (4, INK + 2)] {
-        a.line(offset, offset, w - 1 - offset, offset, c);
-        a.line(offset, offset, offset, h - 1 - offset, c);
-        a.line(w - 1 - offset, offset, w - 1 - offset, h - 1 - offset, c);
-        a.line(offset, h - 1 - offset, w - 1 - offset, h - 1 - offset, c);
+fn atlas_road(a: &mut Art, points: &[Point]) {
+    for (dy, color) in [(3, MOSS + 4), (-2, PARCHMENT + 4), (-1, PARCHMENT + 5), (0, PARCHMENT + 5), (1, PARCHMENT + 4), (2, PARCHMENT + 4)] {
+        for pair in points.windows(2) {
+            let ((ax, ay), (bx, by)) = (pair[0], pair[1]);
+            a.line(ax, ay + dy, bx, by + dy, color);
+        }
     }
-    for (x, y) in [(6,6),(w-7,6),(6,h-7),(w-7,h-7)] {
-        a.ellipse(x, y, 4, 4, WOOD + 1);
-        a.ellipse(x, y, 3, 3, GOLD + 3);
-        a.dot(x - 1, y - 1, GOLD + 7);
-        a.dot(x + 1, y + 1, WOOD + 2);
+}
+
+fn atlas_sky(a: &mut Art, sky: u8, far: u8, near: u8, light: bool) {
+    a.rect(0, 0, a.w, 47, sky);
+    a.rect(0, 20, a.w, 28, sky + 1);
+    if light {
+        a.ellipse(281, 18, 18, 18, sky + 2);
+        a.ellipse(281, 18, 12, 12, CREAM + 7);
     }
+    for (x, y, w) in [(27, 17, 49), (146, 8, 37), (310, 19, 32)] {
+        a.line(x, y, x + w, y, sky + 2);
+        a.line(x + 7, y + 3, x + w / 2, y + 3, sky + 2);
+    }
+    a.poly(&[(0,31),(32,20),(65,25),(106,37),(148,23),(184,17),(227,28),(260,38),(309,29),(342,19),(362,22),(362,48),(0,48)], far);
+    a.poly(&[(0,35),(31,36),(80,30),(122,28),(161,38),(188,41),(229,34),(264,31),(290,35),(323,33),(362,28),(362,48),(0,48)], near);
 }
 
 fn village_scene() -> Art {
     let mut a = Art::new(village::SCENE_W, village::SCENE_H);
-    let stream_x = |y: i32| {
-        let arc = (y / 3 + 25).rem_euclid(76);
-        204 + (arc - 38).abs() + (y / 17 % 3)
-    };
-    for y in 0..a.h {
-        for x in 0..a.w {
-            let n = noise(x, y, 123);
-            let sweep = ((x + y * 3) / 28 + (x / 22) % 2) % 3;
-            let f = noise(x / 12, y / 10, 472);
-            let rib = (x + (f % 6) as i32 + y * 2) % 21;
-            let mut c = GRASS + 2 + ((n % 2) as i32 + sweep) as u8;
-            if f % 9 < 2 && rib > 6 { c = MOSS + 2 + (n % 3) as u8; }
-            let d = (x - stream_x(y)).abs();
-            let river_half = 7 + y / 67;
-            if d <= river_half + 1 {
-                c = if d >= river_half {
-                    MOSS + 2 + (n % 3) as u8
-                } else if d >= river_half - 2 || (y + x / 3) % 13 < 2 && n % 7 < 5 {
-                    WATER + 4 + (n % 3) as u8
-                } else {
-                    WATER + 2 + (n % 3) as u8
-                };
-            }
-            a.dot(x, y, c);
-        }
+    a.rect(0, 40, a.w, a.h - 40, GRASS + 4);
+    atlas_sky(&mut a, PARCHMENT + 5, SLATE + 5, PINE + 5, true);
+    a.poly(&[(0,40),(84,35),(151,45),(183,56),(242,49),(304,37),(362,38),(362,75),(271,96),(187,83),(124,69),(55,70),(0,88)], GRASS + 5);
+    a.poly(&[(0,111),(60,95),(126,97),(196,112),(257,120),(362,103),(362,181),(290,195),(189,180),(88,166),(0,177)], MOSS + 5);
+    a.poly(&[(0,168),(101,156),(182,174),(286,197),(362,182),(362,251),(248,267),(158,232),(76,239),(0,251)], PINE + 5);
+    a.poly(&[(0,241),(81,220),(157,226),(245,263),(362,240),(362,319),(0,319)], GRASS + 5);
+    for (x, y, w, h, tint) in [(7,84,71,35,GOLD),(17,125,81,38,PARCHMENT),(111,108,67,37,PARCHMENT),(290,58,62,29,MOSS),(267,135,65,42,GOLD),(34,220,86,41,MOSS),(164,256,88,54,GOLD)] {
+        atlas_plots(&mut a, x, y, w, h, tint);
     }
-    for k in 0..300 {
-        let n = noise(k, 2, 126);
-        let (x, y) = (7 + (n % 347) as i32, 7 + ((n >> 11) % 305) as i32);
-        if (x - stream_x(y)).abs() > 14 {
-            a.line(x, y, x + (n % 3) as i32, y - 2, GRASS + 6);
-            a.dot(x - 1, y, MOSS + 2);
-            if k % 7 == 0 { a.dot(x, y - 3, PARCHMENT + 6); }
-        }
-    }
-    for (field, ripe) in [
-        ((137,15,80,57), true), ((272,7,76,65), false),
-        ((280,172,65,43), true), ((112,212,66,53), false),
-        ((15,123,78,53), true), ((30,250,65,50), false),
-    ] {
-        wheat_field(&mut a, field.0, field.1, field.2, field.3, ripe);
-    }
-    for path in [
-        [(8,90),(82,81),(147,97),(198,102),(248,90),(354,105)],
-        [(83,79),(110,126),(111,168),(97,208),(103,260),(155,311)],
-        [(352,105),(317,141),(271,154),(243,185),(249,241),(287,304)],
-        [(15,206),(97,208),(148,190),(190,163),(244,158),(272,154)],
-    ] {
-        for pair in path.windows(2) {
-            let (p, q) = (pair[0], pair[1]);
-            for k in -4..=4 {
-                a.line(p.0, p.1 + k, q.0, q.1 + k, if k == -4 || k == 4 { WOOD + 3 } else { PARCHMENT + 3 + (k % 2 == 0) as u8 });
-            }
-            a.line(p.0, p.1 - 1, q.0, q.1 - 1, PARCHMENT + 5);
-        }
-    }
-    for y in [99, 159, 202] {
-        let x = stream_x(y);
-        plank(&mut a, x - 14, y - 5, 29, 12, 23);
-        fence(&mut a, (x-13,y-4), (x+14,y-4));
-        fence(&mut a, (x-13,y+6), (x+14,y+6));
-    }
-    for (x, y, w, h, c) in [
-        (27,84,33,17,RED), (117,79,23,13,WOOD), (161,90,34,17,COPPER),
-        (301,91,34,17,RED), (337,112,23,15,WOOD), (73,124,29,16,COPPER),
-        (146,167,38,22,RED), (182,173,31,17,WOOD), (190,136,23,13,SLATE),
-        (35,202,33,17,RED), (67,215,30,24,COPPER), (146,286,41,22,RED),
-        (164,306,25,14,WOOD), (289,283,31,15,COPPER), (317,314,30,23,SLATE),
-    ] {
-        cottage(&mut a, x, y, w, h, c, (x + y) as u32);
-    }
-    for (x, y, w, h) in [(263,116,57,34),(7,217,62,28),(257,231,62,29)] {
-        fence(&mut a, (x,y), (x+w,y+3));
-        fence(&mut a, (x,y), (x-4,y+h));
-        fence(&mut a, (x+w,y+3), (x+w-5,y+h-1));
-        for k in 0..4 {
-            animal(&mut a, x + 8 + k * 13, y + 13 + k * 8 % (h-12), x != 263, k % 3 != 0);
-        }
-        fence(&mut a, (x-4,y+h), (x+w-5,y+h-1));
-    }
-    a.ellipse(167, 121, 13, 7, MOSS + 1);
-    masonry(&mut a, 159, 111, 15, 12, 71);
-    a.ellipse(166, 110, 9, 5, STONE + 6);
-    a.ellipse(166, 110, 7, 3, WATER + 1);
-    a.line(165, 110, 170, 109, WATER + 5);
-    a.line(159, 110, 159, 100, WOOD + 2);
-    a.line(173, 110, 173, 100, WOOD + 2);
-    a.poly(&[(156,101),(166,95),(176,100),(165,103)], RED + 4);
-    a.line(156,101,166,95,RED + 6);
 
-    for (x, y) in [(12,103),(20,107),(102,14),(112,20),(128,49),(69,96),(85,110),(199,52),(203,59),
-        (243,30),(251,20),(276,79),(349,64),(350,137),(123,158),(192,194),(201,198),
-        (22,294),(13,306),(34,312),(83,304),(93,310),(110,315),(175,243),(181,250),
-        (203,262),(210,265),(263,278),(340,244),(347,255),(354,265),(267,304),(255,311)]
-    {
-        let n = noise(x, y, 31);
-        if n % 4 == 0 { rock(&mut a, x, y, 3 + (n % 6) as i32, n); }
-        else { tree(&mut a, x, y, 6 + (n % 7) as i32, n % 3 == 0, n); }
+    a.poly(&[(248,36),(235,47),(225,57),(227,66),(243,77),(260,88),(268,101),(266,113),(246,136),(237,160),(245,182),(263,197),(281,224),(271,255),(243,276),(216,319),(253,319),(272,293),(301,265),(314,226),(296,191),(271,172),(262,153),(274,127),(295,108),(292,88),(275,77),(254,70),(240,61),(240,56),(248,46),(254,36)], PINE + 3);
+    a.poly(&[(250,37),(238,52),(231,61),(234,68),(270,87),(279,101),(275,115),(253,141),(245,161),(253,180),(277,202),(289,226),(281,257),(252,280),(227,319),(243,319),(266,288),(292,263),(305,225),(286,194),(263,173),(254,154),(267,126),(287,107),(284,91),(271,81),(246,70),(236,62),(243,50),(253,37)], WATER + 5);
+    for (x, y, w) in [(236,59,7), (250,76,8), (274,99,8), (254,147,8), (258,181,11), (287,222,9), (273,273,11)] {
+        a.line(x, y, x + w, y, WATER + 7);
     }
-    village_frame(&mut a);
+
+    atlas_road(&mut a, &[(0,113),(52,101),(106,82),(141,81),(184,89),(213,88),(247,91),(275,86),(319,74),(362,75)]);
+    atlas_road(&mut a, &[(63,98),(94,116),(111,143),(99,180),(58,212),(62,261),(124,319)]);
+    atlas_road(&mut a, &[(211,88),(190,106),(174,138),(183,166),(206,198),(197,245),(160,319)]);
+    atlas_road(&mut a, &[(362,153),(312,147),(291,163),(262,185),(224,195),(206,198)]);
+    for (x, y, w) in [(253,84,31), (247,175,25)] {
+        a.poly(&[(x, y + 3), (x + w, y - 3), (x + w, y + 4), (x, y + 9)], WOOD + 4);
+        a.line(x, y + 3, x + w, y - 3, PARCHMENT + 5);
+        a.line(x, y + 8, x + w, y + 3, PARCHMENT + 5);
+    }
+
+    atlas_grove(&mut a, &[(8,64,8),(19,66,10),(29,71,7),(39,68,11),(51,69,8),(309,48,7),(320,45,9),(333,47,6),(343,51,10),(348,58,8),(353,108,11),(343,115,9),(355,126,7),(121,155,9),(134,159,13),(145,166,9),(13,204,12),(26,205,9),(37,212,14),(211,222,13),(224,226,11),(233,234,9),(331,271,12),(340,287,13),(353,290,8)]);
+    for (x, y, w, h, roof) in [(123,71,21,10,RED),(150,78,35,16,COPPER),(177,82,22,11,SLATE),(200,81,25,11,RED),(141,97,22,11,SLATE),(171,106,34,14,RED),(202,107,26,12,COPPER),(307,104,30,12,SLATE),(85,128,22,12,RED),(142,191,38,21,RED),(171,190,24,13,COPPER),(218,212,26,12,SLATE),(75,268,29,12,COPPER),(159,281,32,18,RED),(327,244,29,13,SLATE)] {
+        cottage(&mut a, x, y, w, h, roof);
+    }
+    // A pale tower over the rooftops anchors the atlas at a glance.
+    a.rect(159, 46, 10, 24, CREAM + 5);
+    a.rect(166, 45, 4, 22, STONE + 5);
+    a.poly(&[(157,46),(165,34),(172,45)], SLATE + 3);
+    a.line(157, 46, 165, 34, SLATE + 6);
+    a.rect(162, 49, 2, 5, SLATE + 2);
+    a.dot(164, 33, GOLD + 7);
     a
 }
 
 fn village_weather(f: usize) -> Art {
-    let mut a = Art::new(363, 70);
-    let sky = [ICE, PARCHMENT, BLUE, STONE, SLATE, WATER][f];
-    let ridge = [ICE, PARCHMENT, PINE, PINE, SLATE, WATER][f];
-    for y in 0..a.h {
-        for x in 0..a.w {
-            let n = noise(x, y, f as u32 + 10);
-            a.dot(x, y, sky + (2 + y / 18) as u8 + (n % 2) as u8);
-        }
+    let mut a = Art::new(village::SCENE_W, 70);
+    let (sky, far, near) = [
+        (ICE + 4, SLATE + 6, ICE + 4),
+        (PARCHMENT + 5, COPPER + 4, PARCHMENT + 3),
+        (ICE + 4, WATER + 4, PINE + 5),
+        (SLATE + 5, SLATE + 4, PINE + 5),
+        (SLATE + 2, VIOLET + 3, SLATE + 3),
+        (WATER + 3, SLATE + 5, WATER + 5),
+    ][f];
+    a.rect(0, 45, a.w, 25, near);
+    atlas_sky(&mut a, sky, far, near, f == 1 || f == 2);
+    a.poly(&[(0,70),(0,51),(58,44),(120,52),(173,64),(228,65),(280,57),(335,45),(362,50),(362,70)], near + 1);
+    a.poly(&[(0,70),(48,64),(108,62),(158,70),(237,70),(306,63),(362,60),(362,70)], GRASS + 4);
+    if f == 4 {
+        a.line(291, 39, 284, 52, GOLD + 7);
+        a.line(284, 52, 290, 50, GOLD + 7);
+        a.line(290, 50, 284, 60, CREAM + 7);
     }
-    if f == 1 || f == 2 {
-        a.ellipse(281, 24, 20, 14, GOLD + 3);
-        a.ellipse(281, 24, 15, 12, GOLD + 6);
-        a.ellipse(279, 23, 10, 8, GOLD + 7);
-    }
-    for k in 0..7 {
-        let x = 13 + k * 53;
-        let n = noise(x, 4, f as u32);
-        let y = 16 + (n % 14) as i32;
-        if f != 1 || k % 4 == 0 {
-            let p = if f == 4 { SLATE + 2 } else if f == 5 { WATER + 2 } else { CREAM + 4 };
-            for (dx, dy, r) in [(-13, 3, 13), (0, 0, 16), (15, 4, 11)] {
-                a.ellipse(x + dx, y + dy, r, r / 4 + 1, p);
-                a.line(x + dx - r / 2, y + dy - 2, x + dx + r / 2, y + dy - 3, p + 1);
-            }
-        }
-    }
-    for k in 0..10 {
-        let x = -24 + k * 48;
-        let y = 31 + (noise(k, 0, f as u32) % 15) as i32;
-        a.poly(&[(x,61),(x+23,y+9),(x+39,y),(x+56,y+9),(x+85,62)], ridge + 1);
-        a.poly(&[(x+12,58),(x+38,y+1),(x+50,y+10),(x+47,52)], ridge + 4);
-        if f == 0 {
-            a.poly(&[(x+27,y+13),(x+39,y+1),(x+49,y+7),(x+48,y+13),(x+39,y+9)], CREAM + 6);
-        }
-    }
-    for x in 7..a.w - 7 {
-        let y = 56 + (noise(x / 9, 3, 22) % 5) as i32;
-        a.line(x, y, x, 66, if f == 5 { WATER + 4 } else { GRASS + 2 });
-    }
-    for x in (13..350).step_by(12) {
-        let n = noise(x, 1, f as u32);
-        if n % 4 != 0 && f != 5 {
-            tree(&mut a, x, 61 + (n % 5) as i32, 2 + (n % 4) as i32, n % 2 == 0, n);
-        }
-    }
-    if f == 4 || f == 5 {
-        for k in 0..65 {
-            let n = noise(k, 0, f as u32);
-            let (x, y) = (7 + (n % 345) as i32, 5 + ((n >> 9) % 48) as i32);
-            a.line(x, y, x - 2, y + 4, ICE + 5);
-        }
-        if f == 4 {
-            a.line(142, 17, 133, 32, GOLD + 7);
-            a.line(133, 32, 143, 30, GOLD + 7);
-            a.line(143, 30, 136, 43, CREAM + 7);
-        }
-    }
-    village_frame(&mut a);
     a
 }
 
@@ -1646,19 +1520,18 @@ fn village_animation(i: usize) -> Art {
         }
         40 => {
             let mut a = Art::new(111, 46);
-            a.ellipse(48, 32, 39, 11, PARCHMENT + 4);
-            for (x, y, r) in [(18,25,11),(36,25,9),(50,21,8),(63,30,8),(80,21,10),(92,26,5)] {
-                rock(&mut a, x, y, r, x as u32);
+            a.ellipse(54, 31, 47, 13, MOSS + 4);
+            for (x, y, r) in [(17, 28, 8), (39, 24, 12), (61, 27, 10), (82, 24, 12)] {
+                a.poly(&[(x - r, y + 4), (x - r / 2, y - r), (x + r / 2, y - r - 2), (x + r, y + 4)], STONE + 4);
+                a.poly(&[(x - r, y + 4), (x - r / 2, y - r), (x + r / 2, y - r - 2), (x + 1, y)], STONE + 6);
             }
-            fence(&mut a, (11,37), (90,37));
+            fence(&mut a, (11, 35), (90, 35));
             a
         }
         41 => {
             let mut a = Art::new(122, 73);
-            for (x, y, r) in [(13,25,9),(31,23,10),(70,16,11),(113,52,9),(97,53,8)] {
-                tree(&mut a, x, y, r, true, x as u32);
-            }
-            cottage(&mut a, 51, 51, 40, 22, WOOD, 17);
+            atlas_grove(&mut a, &[(13, 30, 9), (31, 28, 10), (70, 24, 11), (113, 52, 9), (97, 53, 8)]);
+            cottage(&mut a, 51, 51, 40, 22, WOOD);
             for k in 0..5 {
                 let y = 47 + k * 3;
                 a.line(66, y, 88, y, WOOD + 2);
@@ -1669,9 +1542,9 @@ fn village_animation(i: usize) -> Art {
         }
         43 => {
             let mut a = Art::new(111, 52);
-            for (x, y, r) in [(19,31,13),(35,24,12),(64,28,15),(83,26,12),(91,36,7)] {
-                rock(&mut a, x, y, r, y as u32);
-            }
+            a.poly(&[(9,39),(22,24),(45,16),(70,18),(86,12),(100,26),(104,40)], STONE + 4);
+            a.poly(&[(9,39),(22,24),(45,16),(70,18),(63,26),(34,30)], STONE + 6);
+            a.poly(&[(69,36),(86,12),(100,26),(104,40)], STONE + 3);
             a.ellipse(53, 28, 11, 10, INK + 1);
             a.rect(42, 28, 23, 13, INK + 1);
             a.line(42, 40, 42, 22, WOOD + 4);
@@ -1684,7 +1557,7 @@ fn village_animation(i: usize) -> Art {
         // The single unreferenced resource frame sits between timber and iron.
         _ => {
             let mut a = Art::new(38, 31);
-            cottage(&mut a, 18, 27, 28, 14, COPPER, 21);
+            cottage(&mut a, 18, 27, 28, 14, COPPER);
             a
         }
     }

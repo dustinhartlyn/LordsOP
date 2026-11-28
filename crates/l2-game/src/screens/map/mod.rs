@@ -219,7 +219,8 @@ pub struct MapScreen {
     saved: Viewport,
     base: Canvas,
     tags: Tags,
-    built: Option<(usize, u8, Viewport, u32, u8, u64, u64, u64, u64)>,
+    built: Option<(scape::Key, u64)>,
+    scape: Option<scape::Cache>,
     industry_sites: Vec<IndustrySite>,
     industry_slot: Option<usize>,
     industry_tick: u32,
@@ -257,6 +258,7 @@ pub struct MapScreen {
     /// has its own clock.
     herd_tick: u8,
     herd_phase: u8,
+    livestock_tick: u32,
     /// `Map_Click`'s army branch is three lines: a picked unit of type 1 that is
     /// the local player's either opens the siege screen (`+0x199` set, after
     /// `Siege_ValidateLink` has had a chance to clear it) or goes to
@@ -295,6 +297,8 @@ mod events;
 mod paint;
 mod panel;
 mod reselect;
+mod livestock;
+mod scape;
 mod terrain;
 mod units;
 pub(crate) mod garrison;

@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use super::*;
 use super::helpers::*;
-use super::*;
+use super::planner;
 use l2_kingdom::county::County;
 use l2_kingdom::tables::{JOB_IDLE_TOWNSFOLK, JOB_NAMES};
 use l2_view::village::{self as vill, ICONS_PER_CLUSTER};
@@ -58,9 +58,23 @@ impl Screen for VillageScreen {
         // when it ends. That is [`Phase::Idle`] below, and it is the kind of
         // detail that reads as intermittent to a player and gets "fixed" into
         // uniformity by mistake. C59.
+        let standalone = ctx.assets.is_original();
         if self.phase == Phase::Idle && Self::belongs_to_the_sidebar(event) {
+            if standalone {
+                match event {
+                    Event::Pointer { x, y } => self.pointer = (x, y),
+                    Event::Release { .. } => self.anchor = None,
+                    _ => {}
+                }
+            }
             return Transition::Pass;
         }
+        let can_assign = !standalone || ctx.game.is_players(self.county);
+        let close = if standalone {
+            planner::CLOSE
+        } else {
+            VillageScreen::ok_button(VillageScreen::top_y(ctx))
+        };
         match event {
             // ```c
             // /* 0x02, idle */              if (rightReleased) { g_screenId = 0; ... }
@@ -80,7 +94,7 @@ impl Screen for VillageScreen {
                 if self.phase == Phase::Carry {
                     self.clear_drag();
                     self.pending_click = None;
-                    self.status = "PUT BACK".into();
+                    self.status = if standalone { "Selection cancelled." } else { "PUT BACK" }.into();
                     return Transition::Stay;
                 }
                 if self.phase == Phase::Band {
@@ -92,17 +106,21 @@ impl Screen for VillageScreen {
                 self.pointer = (x, y);
                 if self.phase == Phase::Band {
                     self.box_select(&*ctx);
-                } else if self.phase == Phase::Idle {
+                } else if self.phase == Phase::Idle && can_assign {
                     if let Some((ax, ay)) = self.anchor {
                         if (x - ax).abs() >= vill::DRAG_DEAD_ZONE
                             || (y - ay).abs() >= vill::DRAG_DEAD_ZONE
                         {
+                            if standalone {
+                                self.pending_click = None;
+                            }
                             self.phase = Phase::Band;
                             self.box_select(&*ctx);
                         }
                     }
                 }
             }
+            Event::PointerLeft if standalone => self.pointer = (-1, -1),
             // **`Village_DoubleClick` (`0x00439DF0`) is its own input arm**, and
             // it is the only reader of the double-click flag in the whole
             // binary. It sits *between* `Village_BandStart` and
@@ -117,7 +135,7 @@ impl Screen for VillageScreen {
                 // clears `DAT_004E65E8` the moment `DAT_004EABC5` is set, in
                 // the poll itself, so the popup never opens behind the move.
                 self.pending_click = None;
-                if self.phase != Phase::Idle {
+                if self.phase != Phase::Idle || !can_assign {
                     return Transition::Stay;
                 }
                 if let Some(cluster) = self.double_click_cluster(&*ctx, x, y) {
@@ -146,7 +164,7 @@ impl Screen for VillageScreen {
                 // *"the game waited on mouse-up"* from the other side.
                 //
                 // arm: 0x0040E7E4/village-corner-closes left-release
-                if VillageScreen::ok_button(VillageScreen::top_y(&*ctx)).contains(x, y) {
+                if close.contains(x, y) {
                     return Transition::Pop;
                 }
                 match self.phase {
@@ -156,9 +174,14 @@ impl Screen for VillageScreen {
                         // nothing means the band was for nothing.
                         if self.drag_cluster != 0 {
                             self.phase = Phase::Carry;
-                            self.status = format!("{} PICKED UP", self.drag_count);
+                            if !standalone {
+                                self.status = format!("{} PICKED UP", self.drag_count);
+                            }
                         } else {
                             self.clear_drag();
+                            if standalone {
+                                self.status = "No worker groups selected.".into();
+                            }
                         }
                     }
                     Phase::Idle => {
@@ -167,13 +190,14 @@ impl Screen for VillageScreen {
                         // press (`Village_ClickJob` reads `DAT_004EABF0`, which
                         // is that timer expiring). See
                         // [`VillageScreen::CLICK_SETTLE_TICKS`]; `update` is
-                        // where it lands. Ownership is not tested: you cannot
-                        // reach the village of a county you do not hold in the
-                        // first place.
+                        // where it lands. Inspecting a job does not change
+                        // the workforce; only its owner can reassign workers.
                         //
                         // arm: 0x0043A123/click-opens-the-job-popup left-release
-                        if self.anchor.take().is_some() {
-                            self.pending_click = Some((x, y, Self::CLICK_SETTLE_TICKS));
+                        if let Some((ax, ay)) = self.anchor.take() {
+                            if !standalone || planner::site_at(ax, ay) == planner::site_at(x, y) {
+                                self.pending_click = Some((x, y, Self::CLICK_SETTLE_TICKS));
+                            }
                         }
                     }
                     Phase::Carry => {}
@@ -207,6 +231,11 @@ impl Screen for VillageScreen {
     }
 
     fn draw(&mut self, ctx: &Ctx, canvas: &mut Canvas) {
+        if ctx.assets.is_original() {
+            self.draw_planner(ctx, canvas);
+            return;
+        }
+
         let ink = &ctx.assets.ink;
         let top = VillageScreen::top_y(ctx);
 

@@ -121,18 +121,29 @@ impl MapScreen {
         if !self.opened {
             self.open_on_the_player(ctx);
         }
-        let key = (
-            ctx.game.map_slot,
-            self.zoom.id,
-            self.view,
-            ctx.game.kingdom.turn_count,
-            ctx.game.kingdom.season,
-            Self::field_digest(ctx),
-            Self::castle_key(ctx),
-            self.industry_key(),
-            Self::fog_key(ctx),
-        );
-        if self.built == Some(key) {
+        let native = ctx.assets.has_native_art();
+        let map = &ctx.game.kingdom.campaign.map;
+        let site_states = if native {
+            self.industry_sites.iter().fold(0u64, |h, site| {
+                let state = map.terrain.get(site.tile).copied().unwrap_or(0);
+                h.wrapping_mul(0x100_0001).wrapping_add(u64::from(state))
+            })
+        } else {
+            0
+        };
+        let scenery = scape::Key {
+            slot: ctx.game.map_slot,
+            zoom: self.zoom.id,
+            view: self.view,
+            turn: ctx.game.kingdom.turn_count,
+            season: ctx.game.kingdom.season,
+            fields: Self::field_digest(ctx),
+            castles: Self::castle_key(ctx),
+            sites: site_states,
+            fog: Self::fog_key(ctx),
+        };
+        let key = (scenery, self.industry_key());
+        if self.built == Some(key) && self.scape.is_some() == native {
             return;
         }
         if self.holding_art_for_the_dark() {
@@ -166,6 +177,14 @@ impl MapScreen {
             fog,
         );
         l2_net::trace_do!(l2_net::trace_draw::captured("map-base"););
+        if native {
+            scape::draw(
+                &mut self.scape, &mut self.base, scenery, &self.zoom, &slot, &lattice, map,
+                &overrides, fog,
+            );
+        } else {
+            self.scape = None;
+        }
         self.built = Some(key);
     }
 

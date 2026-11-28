@@ -38,7 +38,10 @@ pub fn draw_titles(ctx: &Ctx, canvas: &mut Canvas, open: Option<usize>) {
         let colour = if lit { PICKED_INK } else { font::TEXT };
         match ctx.assets.shell.body.as_ref() {
             Some(f) => {
-                f.draw(canvas, r.x, r.y, &caption, &font::Style::new(colour));
+                let style = font::Style { colour: if lit { 128 } else { 127 }, shadow: None, caps: None };
+                if f.draw_outline(canvas, r.x, r.y, &caption, style, None).is_none() {
+                    f.draw(canvas, r.x, r.y, &caption, &font::Style::new(colour));
+                }
             }
             None => {
                 let c = if lit { ink.background } else { ink.text };

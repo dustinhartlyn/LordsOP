@@ -109,11 +109,12 @@ pub struct Canvas {
     pub pixels: Vec<u8>,
     /// C259: `None` unless the sharp-text setting is on.
     pub sharp: Option<Box<crate::sharp::Sharp>>,
+    pub(crate) detail: Option<Box<crate::detail::Detail>>,
 }
 
 impl Canvas {
     pub fn new(width: usize, height: usize) -> Self {
-        Canvas { width, height, pixels: vec![TRANSPARENT; width * height], sharp: None }
+        Canvas { width, height, pixels: vec![TRANSPARENT; width * height], sharp: None, detail: None }
     }
 
     pub fn screen() -> Self {
@@ -124,6 +125,9 @@ impl Canvas {
         self.pixels.fill(index);
         if let Some(s) = self.sharp.as_mut() {
             s.on.fill(false);
+        }
+        if let Some(d) = &mut self.detail {
+            d.coverage.fill(crate::detail::Coverage::Clear);
         }
     }
 
@@ -226,6 +230,14 @@ impl Canvas {
         if let Some(s) = self.sharp.as_mut() {
             s.hi.iter_mut().for_each(|p| *p = table[*p as usize]);
         }
+    }
+
+    /// Dim an existing scene, before drawing a new modal over it.
+    pub fn shade(&mut self, palette: &l2_formats::Palette) {
+        if let Some(d) = &mut self.detail {
+            d.dim(self.width);
+        }
+        self.remap(&shade_table(palette));
     }
 
     fn blit_inner(&mut self, frame: &DecodedFrame, ox: i32, oy: i32, mask: bool) {

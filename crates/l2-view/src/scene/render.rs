@@ -102,6 +102,18 @@ pub fn draw_figures(
     assets: &BattleAssets,
     cam: Camera,
 ) -> usize {
+    draw_figures_with(canvas, runner, assets, cam, |_, _, _, _| false)
+}
+
+/// A standalone painter may replace a visible figure without changing depth,
+/// animation position, clipping, or which legacy engines draw their overlays.
+pub fn draw_figures_with(
+    canvas: &mut Canvas,
+    runner: &BattleRunner,
+    assets: &BattleAssets,
+    cam: Camera,
+    mut paint: impl FnMut(&mut Canvas, &Fighter, usize, (i32, i32)) -> bool,
+) -> usize {
     // `FUN_004BD938` collects every man within one cell of the viewport,
     // `FUN_004BDA92` bubble-sorts them by map y and `FUN_004BDB95` draws in
     // that order. The cell both of them read is `mapX`/`mapY`, which is the
@@ -128,9 +140,12 @@ pub fn draw_figures(
     let mut drawn = 0;
     for (_, i) in order {
         let f = &runner.fighters[i];
-        let Some(sheet) = assets.sheet_for(f.side, f.troop) else { continue };
-
         let (cell_x, cell_y) = figure_origin(f, cam);
+        if paint(canvas, f, i, (cell_x, cell_y)) {
+            drawn += 1;
+            continue;
+        }
+        let Some(sheet) = assets.sheet_for(f.side, f.troop) else { continue };
 
         // A knight rides; the horse goes down first — `FUN_004BE4DF`, through
         // the same clip.

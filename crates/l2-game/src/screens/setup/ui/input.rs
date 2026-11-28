@@ -27,13 +27,35 @@ impl SetupScreen {
         pen: &Pen,
         index: usize,
         rect: Rect,
-        group: usize,
+        original: bool,
         s: usize,
     ) {
-        shell::button_recess(canvas, rect.x, rect.y, rect.w, rect.h);
+        if original {
+            let selected = index == self.selected;
+            let fill = if selected { 10 } else { 9 };
+            canvas.fill_rect(rect.x, rect.y, rect.w, rect.h, fill);
+            let edge = if selected { 0xFB } else { 11 };
+            canvas.fill_rect(rect.x, rect.y, 2, rect.h, edge);
+            canvas.fill_rect(rect.x + 2, rect.y + rect.h - 1, rect.w - 2, 1, edge);
+        } else {
+            shell::button_recess(canvas, rect.x, rect.y, rect.w, rect.h);
+        }
         pen.eng_centred(
             canvas,
-            group,
+            GROUP,
+            s,
+            rect.x,
+            rect.y + ITEM_TEXT,
+            rect.w,
+            self.colour(index),
+        );
+    }
+
+    fn draw_gateway_item(&self, canvas: &mut Canvas, pen: &Pen, index: usize, rect: Rect, s: usize) {
+        crate::original::draw_gateway_button(canvas, rect.x, rect.y, index == self.selected);
+        pen.eng_centred(
+            canvas,
+            GROUP,
             s,
             rect.x,
             rect.y + ITEM_TEXT,
@@ -43,13 +65,28 @@ impl SetupScreen {
     }
 
     pub(super) fn paint(&self, ctx: &Ctx, canvas: &mut Canvas, pen: &Pen, head: &Pen, page: SetupPage) {
+        let native = ctx.assets.has_native_art() && canvas.has_detail();
         match page {
             SetupPage::Title => {
-                pen.window_from(canvas, BOX_SHEET, 0xA0, 10, 0x14, 0xF);
-                head.eng_heading_centred(canvas, GROUP, 0, TITLE_X, TITLE_Y, TITLE_W, font::TEXT);
-                pen.eng_centred(canvas, GROUP, 1, TITLE_X, SUBTITLE_Y, TITLE_W, font::TEXT);
+                if native {
+                    crate::original::draw_gateway_mark(canvas);
+                } else if ctx.assets.is_original() {
+                    canvas.fill_rect(185, 14, 272, 220, 129);
+                    canvas.fill_rect(185, 14, 272, 1, 12);
+                    canvas.fill_rect(185, 233, 272, 1, 12);
+                    pen.eng_heading_centred(canvas, GROUP, 0, TITLE_X, 29, TITLE_W, font::TEXT);
+                    pen.eng_centred(canvas, GROUP, 1, TITLE_X, 61, TITLE_W, 14);
+                } else {
+                    pen.window_from(canvas, BOX_SHEET, 0xA0, 10, 0x14, 0xF);
+                    head.eng_heading_centred(canvas, GROUP, 0, TITLE_X, TITLE_Y, TITLE_W, font::TEXT);
+                    pen.eng_centred(canvas, GROUP, 1, TITLE_X, SUBTITLE_Y, TITLE_W, font::TEXT);
+                }
                 for (i, s) in TITLE_ITEMS.iter().enumerate() {
-                    self.draw_item(canvas, pen, i, item_rect(i), GROUP, *s);
+                    if native {
+                        self.draw_gateway_item(canvas, pen, i, item_rect(i), *s);
+                    } else {
+                        self.draw_item(canvas, pen, i, item_rect(i), ctx.assets.is_original(), *s);
+                    }
                 }
                 missing_fonts_banner(ctx, canvas);
                 crate::build_id::draw(canvas, pen);
@@ -65,10 +102,18 @@ impl SetupScreen {
                 }
             }
             SetupPage::Options => {
-                pen.window_from(canvas, BOX_SHEET, 0xB0, 10, 0x12, 0x12);
+                if native {
+                    crate::original::draw_menu_frame(canvas, 0xB0, 10, 0x120, 0x120);
+                } else {
+                    pen.window_from(canvas, BOX_SHEET, 0xB0, 10, 0x12, 0x12);
+                }
                 head.eng_heading_centred(canvas, GROUP, 5, 0xB0, 0x2D, 0x120, font::TEXT);
                 for (i, s) in OPTION_ITEMS.iter().enumerate() {
-                    self.draw_item(canvas, pen, i, item_rect(i), GROUP, *s);
+                    if native {
+                        self.draw_gateway_item(canvas, pen, i, item_rect(i), *s);
+                    } else {
+                        self.draw_item(canvas, pen, i, item_rect(i), ctx.assets.is_original(), *s);
+                    }
                 }
             }
             SetupPage::Load => {
@@ -97,18 +142,21 @@ impl SetupScreen {
                 // load box has an empty status line, so ours has one too.
             }
             SetupPage::Shield => {
-                pen.window_from(canvas, BOX_SHEET, 0x50, 10, 0x1E, 0x10);
+                if native {
+                    crate::original::draw_menu_frame(canvas, 80, 10, 480, 244);
+                    canvas.fill_rect(98, 115, 444, 1, 0x22);
+                } else {
+                    pen.window_from(canvas, BOX_SHEET, 0x50, 10, 0x1E, 0x10);
+                }
                 head.eng_heading_centred(canvas, GROUP, 10, 0x50, 0x23, 0x1E0, font::TEXT);
-                self.paint_shields(canvas, pen);
+                self.paint_shields(canvas, pen, native);
                 for (i, (x, y, s)) in SHIELD_BUTTONS.iter().enumerate() {
-                    self.draw_item(
-                        canvas,
-                        pen,
-                        5 + i,
-                        Rect::new(*x, *y, ITEM_W, ITEM_H),
-                        GROUP,
-                        *s,
-                    );
+                    let rect = Rect::new(*x, *y, ITEM_W, ITEM_H);
+                    if native {
+                        self.draw_gateway_item(canvas, pen, i + 5, rect, *s);
+                    } else {
+                        self.draw_item(canvas, pen, i + 5, rect, ctx.assets.is_original(), *s);
+                    }
                 }
             }
             SetupPage::Campaign | SetupPage::GameType => {
@@ -161,7 +209,7 @@ impl SetupScreen {
     /// 205 … 214 are five pairs of roughly 60 × 65 shields, one pair per realm
     /// colour, 204 is a 224 × 32 plate the size of a name field, and 215 is a
     /// 54 × 27 plaque. Nothing else in either file is that shape.
-    fn paint_shields(&self, canvas: &mut Canvas, pen: &Pen) {
+    fn paint_shields(&self, canvas: &mut Canvas, pen: &Pen, native: bool) {
         // `FUN_0041F321` is five statements and every one of them is here:
         //
         // ```c
@@ -173,14 +221,44 @@ impl SetupScreen {
         // g_caretX += 0xD6;  g_caretY = 0x52;
         // Edit_DrawCaret(0x5AF8F0, 0x3F);                    /* the caret      */
         // ```
-        let sheet = pen.assets.sheet(BOX_SHEET);
-        match sheet.and_then(|s| s.frame(0xCC)) {
-            Some(f) => canvas.blit(&f, NAME_PLATE_X, NAME_PLATE_Y),
-            None => shell::button_recess(canvas, NAME_PLATE_X, NAME_PLATE_Y, 0xE0, 0x20),
+        let sheet = if native { None } else { pen.assets.sheet(BOX_SHEET) };
+        if native {
+            let plate = Rect::new(NAME_PLATE_X, NAME_PLATE_Y, 0xE0, 0x20);
+            canvas.fill_rect(plate.x, plate.y, plate.w, plate.h, 9);
+            outline_rect(canvas, plate, 0x24);
+            pen.body(canvas, 171, NAME_Y, "Name", font::TEXT);
+        } else {
+            match sheet.and_then(|s| s.frame(0xCC)) {
+                Some(f) => canvas.blit(&f, NAME_PLATE_X, NAME_PLATE_Y),
+                None => shell::button_recess(canvas, NAME_PLATE_X, NAME_PLATE_Y, 0xE0, 0x20),
+            }
         }
         pen.body(canvas, NAME_X, NAME_Y, &self.name.text(), font::TEXT);
-        let ink = if pen.assets.body.is_some() { font::TEXT } else { pen.ink.text };
+        let ink = if native {
+            0xFF
+        } else if pen.assets.body.is_some() {
+            font::TEXT
+        } else {
+            pen.ink.text
+        };
         self.name.draw_caret(canvas, NAME_X, NAME_Y, ink, &text::FontMetrics::of(pen.assets));
+        if native {
+            for i in 0..5 {
+                let x = SHIELD_X + i as i32 * SHIELD_STEP;
+                let selected = i == self.shield;
+                if selected || i == self.selected {
+                    let center = x + SHIELD_W / 2;
+                    let ink = if selected { 0xFB } else { 0x24 };
+                    for span in 1..=5 {
+                        canvas.fill_rect(
+                            center - (5 - span), SHIELD_Y - 13 + span, 11 - 2 * span, 1, ink,
+                        );
+                    }
+                }
+                crate::original::draw_shield(canvas, x, SHIELD_Y, i, selected);
+            }
+            return;
+        }
         let Some(sheet) = sheet else { return };
         for i in 1..6usize {
             let x = SHIELD_X + (i as i32 - 1) * SHIELD_STEP;

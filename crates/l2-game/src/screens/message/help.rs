@@ -10,6 +10,8 @@
 
 use l2_view::Canvas;
 
+use super::copy::{body_at, title};
+
 use crate::message::{self, help};
 use crate::screen::Ctx;
 use crate::shell::{font, Pen};
@@ -24,14 +26,13 @@ pub(super) fn draw_help(
     record: &message::Record,
     f: message::Frame,
 ) {
-    let shell = &ctx.assets.shell;
     let (hx, hy, hw) = help::heading(f);
-    pen.heading_centred(canvas, hx, hy, hw, &help::words(shell, record.group, 0), font::TEXT);
+    pen.heading_centred(canvas, hx, hy, hw, title(ctx, record), font::TEXT);
 
     let (x, top, width) = help::body(f);
     let mut at = top;
-    for i in 1..=help::paragraphs(record.group) {
-        let words = help::words(shell, record.group, i);
-        at += pen.body_wrapped(canvas, x, at, width, &words, font::TEXT) + help::PARAGRAPH_GAP;
+    for i in 1..=help::paragraphs(record.group).max(1) {
+        let words = body_at(ctx, record, i);
+        at += pen.body_wrapped(canvas, x, at, width, words, font::TEXT) + help::PARAGRAPH_GAP;
     }
 }

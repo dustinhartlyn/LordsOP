@@ -75,6 +75,9 @@ impl Canvas {
         if let Some(s) = self.sharp.as_mut() {
             s.on[i] = false;
         }
+        if let Some(d) = &mut self.detail {
+            d.coverage[i] = crate::detail::Coverage::Clear;
+        }
     }
 
     /// The plane copied from `other`, and every block off.
@@ -82,6 +85,14 @@ impl Canvas {
         self.pixels.copy_from_slice(&other.pixels);
         if let Some(s) = self.sharp.as_mut() {
             s.on.fill(false);
+        }
+        if let Some(dst) = self.detail.as_mut() {
+            if let Some(src) = &other.detail {
+                dst.coverage.copy_from_slice(&src.coverage);
+                dst.pixels.copy_from_slice(&src.pixels);
+            } else {
+                dst.coverage.fill(crate::detail::Coverage::Clear);
+            }
         }
     }
 
@@ -96,15 +107,21 @@ impl Canvas {
         }
     }
 
-    /// The picture at `k` x the logical size. Art is each logical pixel `k` x `k`;
-    /// a block that is `on` is its [`SCALE`] x [`SCALE`] patch of `hi`, averaged
-    /// to `k` x `k` by area (a copy at `k` = [`SCALE`]).
+    /// Present indexed colors, sharp text and true-color detail at `k` times
+    /// the logical size. Non-native output sizes average each 3x block by area.
     pub fn to_rgba_at(&self, palette: &l2_formats::Palette, k: usize, rgba: &mut [u8]) {
+        self.composite(palette, k, None, rgba);
+    }
+
+    pub fn composite(&self, palette: &l2_formats::Palette, k: usize, fade: Option<u8>, rgba: &mut [u8]) {
         let k = k.max(1);
-        let lut: Vec<[u8; 4]> = (0..=255u8).map(|i| { let [r, g, b] = palette.rgb(i); [r, g, b, 0xff] }).collect();
+        let lut: [[u8; 4]; 256] = std::array::from_fn(|i| {
+            let [r, g, b] = palette.rgb(i as u8);
+            [r, g, b, 255]
+        });
         let (lw, w) = (self.width, self.width * k);
         // Output o of a block spans [SCALE*o, SCALE*o + SCALE); source s spans [k*s, k*s + k).
-        let taps: Vec<Vec<(usize, u32)>> = (0..k)
+        let taps: Vec<Vec<(usize, u32)>> = (0..k).filter(|_| k != SCALE)
             .map(|o| {
                 let (a, b) = (SCALE * o, SCALE * o + SCALE);
                 (a / k..b.div_ceil(k).min(SCALE)).map(|s| (s, (b.min(k * s + k) - a.max(k * s)) as u32)).collect()
@@ -112,21 +129,68 @@ impl Canvas {
             .collect();
         let n = (SCALE * SCALE) as u32;
         for y in 0..self.height {
-            for x in 0..lw {
+            let mut x = 0;
+            while x < lw {
                 let i = y * lw + x;
-                let on = self.sharp.as_ref().is_some_and(|s| s.on[i]);
-                if !on {
-                    let c = lut[self.pixels[i] as usize];
+                use crate::detail::Coverage;
+                let sharp = self.sharp.as_ref().filter(|s| s.on[i]);
+                let detail = self.detail.as_ref().filter(|d| d.coverage[i] != Coverage::Clear);
+                if let Some(d) = detail.filter(|d| {
+                    fade.is_none() && sharp.is_none() && d.coverage[i] == Coverage::Opaque
+                })
+                {
+                    if k == SCALE {
+                        let end = (x + 1..lw).find(|&next| {
+                            d.coverage[y * lw + next] != Coverage::Opaque
+                                || self.sharp.as_ref().is_some_and(|s| s.on[y * lw + next])
+                        }).unwrap_or(lw);
+                        for dy in 0..SCALE {
+                            let row = (y * SCALE + dy) * w * 4;
+                            let span = row + x * SCALE * 4..row + end * SCALE * 4;
+                            rgba[span.clone()].copy_from_slice(&d.pixels[span]);
+                        }
+                        x = end;
+                        continue;
+                    }
+                    if k == 1 || k == 2 {
+                        d.resample_opaque(x, y, lw, k, rgba);
+                        x += 1;
+                        continue;
+                    }
+                }
+                // Remaining cases are indexed, partially transparent, or
+                // involve text overlays, fades, or unusual output scales.
+                let c = lut[self.pixels[i] as usize];
+                if sharp.is_none() && detail.is_none() {
                     for dy in 0..k {
                         let row = ((y * k + dy) * w + x * k) * 4;
                         for px in rgba[row..row + k * 4].chunks_exact_mut(4) {
                             px.copy_from_slice(&c);
                         }
                     }
+                    x += 1;
                     continue;
                 }
-                let hi = &self.sharp.as_ref().unwrap().hi;
-                let src = |sx: usize, sy: usize| lut[hi[(y * SCALE + sy) * lw * SCALE + x * SCALE + sx] as usize];
+                let src = |sx: usize, sy: usize| {
+                    let at = (y * SCALE + sy) * lw * SCALE + x * SCALE + sx;
+                    if let Some(s) = sharp {
+                        let ink = s.hi[at];
+                        if detail.is_none() || ink != self.pixels[i] {
+                            return lut[ink as usize];
+                        }
+                    }
+                    detail.map_or(c, |d| d.sample(at, c, fade))
+                };
+                if k == SCALE {
+                    for dy in 0..SCALE {
+                        let row = ((y * k + dy) * w + x * k) * 4;
+                        for dx in 0..SCALE {
+                            rgba[row + dx * 4..row + (dx + 1) * 4].copy_from_slice(&src(dx, dy));
+                        }
+                    }
+                    x += 1;
+                    continue;
+                }
                 for (oy, ys) in taps.iter().enumerate() {
                     for (ox, xs) in taps.iter().enumerate() {
                         let mut acc = [0u32; 3];
@@ -142,6 +206,7 @@ impl Canvas {
                         rgba[at..at + 4].copy_from_slice(&[(acc[0] / n) as u8, (acc[1] / n) as u8, (acc[2] / n) as u8, 0xff]);
                     }
                 }
+                x += 1;
             }
         }
     }
